@@ -17,3 +17,7 @@
 `gcc -fPIC -shared libcbare.so output.o  -o liboutput1.so`
 
 `g++ examples/main.cpp liboutput1.so -Xlinker -rpath ./ -o main`
+
+### output.o is bin
+
+`echo $?` print exit code of last exec

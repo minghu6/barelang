@@ -19,12 +19,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     ///////////////////////////////////////////////////////////////////////////
     //// Code Generation
 
+    /* declare type */
     let i64_type = context.i64_type();
-    let fn_type = i64_type.fn_type(&[i64_type.into(), i64_type.into(), i64_type.into()], false);
-    let fn_sum = module.add_function("sum", fn_type, None);
-    let basic_block = context.append_basic_block(fn_sum, "entry");
+    let void_type = context.void_type();
 
-    builder.position_at_end(basic_block);
+    let fn_sum_t = i64_type.fn_type(&[i64_type.into(), i64_type.into(), i64_type.into()], false);
+    let fn_sum = module.add_function("sum", fn_sum_t, None);
+    let blk_sum = context.append_basic_block(fn_sum, "sumblk");
+
+    builder.position_at_end(blk_sum);
 
     let x = fn_sum.get_nth_param(0).unwrap().into_int_value();
     let y = fn_sum.get_nth_param(1).unwrap().into_int_value();
@@ -40,11 +43,27 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     builder.build_call(
         fn_putchard,
-        &[BasicValueEnum::IntValue(i64_type.const_int(55, false))],
+        &[BasicValueEnum::IntValue(sum.clone())],
         "printi"
     );
 
     builder.build_return(Some(&sum));
+
+    /* Create Main Function */
+    let fn_main_t = i64_type.fn_type(&[], false);
+    let fn_main = module.add_function("main", fn_main_t, None);
+    let blk_main = context.append_basic_block(fn_main, "mainblk");
+    builder.position_at_end(blk_main);
+    let const_1 = BasicValueEnum::IntValue(i64_type.const_int(1, false));
+    let const_2 = BasicValueEnum::IntValue(i64_type.const_int(2, false));
+    let const_3 = BasicValueEnum::IntValue(i64_type.const_int(3, false));
+
+    builder.build_call(
+        fn_sum,
+        &[const_1, const_2, const_3],
+        "sum"
+    );
+    builder.build_return(Some(&i64_type.const_zero()));
 
     ///////////////////////////////////////////////////////////////////////////
     //// Target Generation
