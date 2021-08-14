@@ -1,0 +1,11 @@
+/// this is my exp0 prog
+
+// atom data [] list, 2 factor map list, homomorphism
+// int is usize/isize as default, fixed,
+
+let t0 = 5
+
+rs#printi(t0)
+
+let t1 = [1 2 3 4]
+

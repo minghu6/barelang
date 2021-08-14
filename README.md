@@ -21,3 +21,11 @@
 ### output.o is bin
 
 `echo $?` print exit code of last exec
+
+
+### Lex
+
+#### test
+
+`cargo test -- --nocapture test_lex`
+
