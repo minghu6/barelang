@@ -1,11 +1,10 @@
 extern crate proc_macro;
-use std::error::Error;
 
 use proc_macro::TokenStream;
 use proc_macro2::{ Span };
 use syn::parse::{Parse, ParseStream, Result};
 use syn::{Ident, Token, parse_macro_input, Path, LitStr};
-use quote::{TokenStreamExt, quote};
+use quote::{ quote };
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -170,6 +169,7 @@ impl Parse for MakeTokenMatcherRules {
     }
 }
 
+/// 只需要头部匹配就可以完成匹配, 因为之前的分词已经做了区分
 #[proc_macro]
 pub fn make_token_matcher_rules(input: TokenStream) -> TokenStream {
     let MakeTokenMatcherRules {

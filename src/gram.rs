@@ -4,7 +4,7 @@ use indexmap::{indexset, IndexSet, IndexMap};
 use itertools::Itertools;
 
 ////////////////////////////////////////////////////////////////////////////////
-/////// Grammar Symbol
+//// Grammar Symbol
 
 /// GramSym: 语法符号
 #[derive(Hash, PartialEq, Eq, Clone, Debug)]
@@ -673,6 +673,7 @@ impl iter::IntoIterator for Gram {
 }
 
 
+
 #[cfg(test)]
 #[allow(non_snake_case)]
 #[allow(unused_imports)]
@@ -869,3 +870,4 @@ mod test {
         }
     }
 }
+
