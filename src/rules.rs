@@ -1,3 +1,4 @@
+//! Specific grammar rules for barelang
 
 use lazy_static::lazy_static;
 
@@ -70,7 +71,7 @@ pub enum LexSt {
     BlkComment,
     BlkCommentEnd,
     BlkCommentEnd2,
-    LnComment
+    LnComment,
 }
 
 pub fn barelang_lexdfamap() -> LexDFAMapType {
@@ -163,7 +164,7 @@ pub fn barelang_lexdfamap() -> LexDFAMapType {
             op_m          | LexSt::Op,        true
         },
         LexSt::SplIdent => {
-            ident_head_m  | LexSt::IdentName, false
+            ident_head_m  | LexSt::IdentName, true
         },
         LexSt::Op => {
             op_m          | LexSt::Op,          false
@@ -251,7 +252,8 @@ pub fn barelang_lexdfamap() -> LexDFAMapType {
 
 pub fn barelang_token_matcher_vec() -> TokenMatcherVec {
     token_analyzer! {
-        id     => "^[[:alnum:]_]+.*$",
+        id     => "^[[:alpha:]_][[:alnum:]_]*$",
+        splid  => "^[[:alpha:]_][[:alnum:]_]*#$",
         intlit => r"^[+|-]?(([0-9]+)|(0x[0-9a-f]+))$",
 
         slash_block_comment => r"^/\*.*$",
@@ -266,8 +268,7 @@ pub fn barelang_token_matcher_vec() -> TokenMatcherVec {
         semi   => r"^;$",
         dot    => r"^\.$",
         comma  => r",",
-        eq     => r"=",
-        klet   => r"let"
+        eq     => r"="
     }
 }
 
@@ -275,30 +276,34 @@ pub fn barelang_token_matcher_vec() -> TokenMatcherVec {
 ////////////////////////////////////////////////////////////////////////////////
 //// Grammar
 
+#[allow(non_snake_case)]
 pub fn barelang_gram() -> Gram {
     declare_nonterminal! {
-        prog,
-        block,
-        block_statements,
-        expression,
-        sum,
-        product,
-        addend,
-        pri,
-        multiplier,
-        statement,
-        block_statement,
-        algb_pri,
-        bop,
-        expression_1,
-        function_call,
-        expression_list
+        Prog,
+        Block,
+        BlockStmts,
+        Expr,
+        Pri,
+        Stmt,
+        BlockStmt,
+        BOp,
+        Lit,
+        Id,
+        Expr1,
+        FunCall,
+        ExprList,
+        VariableDeclarator,
+        VariableInitializer
     };
+    // 终结符全部小写 (假装是没有分部的lower camel case)
     declare_terminal! {
         // key
 
         id,
+        splid,
         intlit,
+
+        // single char
         paren,
         sub,
         add,
@@ -306,74 +311,74 @@ pub fn barelang_gram() -> Gram {
         div,
         semi,
         dot,
-        comma
+        comma,
+        eq
     };
 
 
     use_epsilon!(ε);
 
-    let mut barelang = grammar![barelang|
-        prog:
-        | block;
-        | block_statements;
+    let barelang = grammar![barelang|
+        Prog:
+        | Block;
+        | BlockStmts;
 
-        block:
-        | paren block_statements paren;
+        Block:
+        | paren BlockStmts paren;
 
-        block_statements:
-        | block_statement block_statements;
+        BlockStmts:
+        | BlockStmt BlockStmts;
         | ε;
 
-        block_statement:
-        | statement;
+        BlockStmt:
+        | Stmt;
 
-        statement:
+        Stmt:
         | semi;
-        | expression;
+        | Expr semi;
 
-        expression:
-        | sum;
-        | pri expression_1;
-        | function_call;
+        Expr:
+        | Pri Expr1;
+        | FunCall;
+        | VariableDeclarator;
 
-        expression_1:
-        | dot function_call expression_1;
-        | bop pri expression_1;
+        VariableDeclarator:
+        | id eq VariableInitializer;
+
+        VariableInitializer:
+        | Expr;
+
+        Expr1:
+        | dot FunCall Expr1;
+        | BOp Pri Expr1;
         | ε;
 
-        function_call:
-        | id paren expression_list paren;
+        FunCall:
+        | Id paren ExprList paren;
 
-        expression_list:
-        | expression;
-        | expression comma expression_list;
+        ExprList:
+        | Expr;
+        | Expr comma ExprList;
         | ε;
-    |];
 
-    let sum_rule = grammar![sum|
-        sum:
-        | product addend;
+        BOp:
+        | add;
+        | sub;
+        | mul;
+        | div;
 
-        product:
-        | algb_pri multiplier;
+        Pri:
+        | Lit;
+        | Id;
 
-        algb_pri:
+        Id:
         | id;
+        | splid id;
+
+        Lit:
         | intlit;
-        | paren sum paren;
-
-        multiplier:
-        | mul algb_pri multiplier;
-        | div algb_pri multiplier;
-        | ε;
-
-        addend:
-        | add product addend;
-        | sub product addend;
-        | ε;
     |];
 
-    barelang.extend_gram(sum_rule);
 
     barelang
 }

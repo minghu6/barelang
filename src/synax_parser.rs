@@ -1,5 +1,8 @@
+//! Synax Parser: translates directly into synax tree based on rule.rs.
+
 use indexmap::{indexmap, IndexMap};
 use itertools::Itertools;
+use lazy_static::lazy_static;
 
 use std::cell::RefCell;
 use std::fmt;
@@ -8,6 +11,7 @@ use std::rc::Rc;
 // use crate::*;
 use crate::gram::*;
 use super::lexer::*;
+use crate::rules::barelang_gram;
 use super::utils::Stack;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -161,11 +165,6 @@ pub trait Parser {
     fn parse(&self, source: &str) -> Result<Rc<RefCell<AST>>, String>;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-/////// Evaluator Trait
-pub trait Evaluator<RES> {
-    fn eval(&self, ast: &Rc<RefCell<AST>>) -> Result<RES, String>;
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 /////// 带回溯的 变形 LL(1) Parser
@@ -178,13 +177,13 @@ pub struct LL1Parser {
 type LL1ParseStatesStack = Vec<(Rc<RefCell<AST>>, Stack<GramSym>)>;
 
 impl LL1Parser {
-    pub fn new(name: &str, gram: Gram) -> Self {
+    pub fn new(gram: Gram) -> Self {
         let first_sets = gram.first_sets();
         let follow_sets = gram.follow_sets(&first_sets);
         let prediction_sets = gram.prediction_sets(&first_sets, &follow_sets);
 
         Self {
-            name: name.to_string(),
+            name: gram.name().to_string(),
             gram,
             prediction_sets,
         }
@@ -225,6 +224,13 @@ impl LL1Parser {
 impl Parser for LL1Parser {
     fn parse(&self, source: &str) -> Result<Rc<RefCell<AST>>, String> {
         let tokens = tokenize(source);
+
+        // trim tokens
+        let tokens = tokens.into_iter().filter(|tok| {
+            let token_name = tok.name();
+
+            !(token_name == "sp" || token_name.ends_with("comment"))
+        }).collect_vec();
 
         if tokens.is_empty() {
             return Err("empty tokens".to_string());
@@ -483,3 +489,30 @@ fn _copy_ll1_states_stack(states_stack: &LL1ParseStatesStack) -> LL1ParseStatesS
     new_states_stack
 }
 
+lazy_static! {
+    pub static ref PARSER: LL1Parser = LL1Parser::new(barelang_gram());
+}
+
+
+#[cfg(test)]
+mod test {
+    use crate::synax_parser::Parser;
+
+    #[test]
+    fn test_synax() {
+        use super::PARSER;
+        use std::fs;
+
+        let data0 = fs::read_to_string("./examples/exp0.bare").expect("Unable to read file");
+
+        match (*PARSER).parse(&data0) {
+            Ok(res) => {
+                println!("{}", res.as_ref().borrow())
+            },
+            Err(msg) => {
+                eprintln!("{}", msg);
+            }
+        }
+
+    }
+}

@@ -1,3 +1,5 @@
+//! Meta Grammar Processor
+
 use std::{fmt, iter};
 
 use indexmap::{indexset, IndexSet, IndexMap};
@@ -159,6 +161,7 @@ impl fmt::Display for FstSetSym {
 
 /// FollSets: Follow Sets 符号类型
 pub type FollSets = IndexMap<GramSym, IndexSet<FollSetSym>>;
+
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub enum FollSetSym {
     Sym(String),
@@ -605,6 +608,10 @@ fn _calc_follow_sets_turn(
             for (i, str_x) in normal_str.iter().enumerate().rev() {
                 if str_x.is_terminal() {
                     continue;
+                }
+
+                if !follow_sets.contains_key(str_x) {
+                    assert!(false, "get {} None", str_x);
                 }
 
                 let mut here_set = follow_sets.get(str_x).unwrap().clone();

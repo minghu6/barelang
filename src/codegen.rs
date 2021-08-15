@@ -12,8 +12,11 @@ use inkwell::values::{BasicValueEnum, FunctionValue, IntValue};
 use std::error::Error;
 use std::path::Path;
 
+use crate::baredata::*;
 
-pub fn codegen() -> Result<(), Box<dyn Error>> {
+
+#[allow(unused)]
+fn hardcode_codegen() -> Result<(), Box<dyn Error>> {
     let context = Context::create();
     let module = context.create_module("sum");
     let builder = context.create_builder();
@@ -94,3 +97,21 @@ pub fn codegen() -> Result<(), Box<dyn Error>> {
 
     Ok(())
 }
+
+pub fn codegen() -> Result<(), Box<dyn Error>> {
+
+    Ok(())
+}
+
+pub trait BareData {
+    fn codegen();
+
+}
+
+
+impl BareData for BarePri {
+    fn codegen() {
+        todo!()
+    }
+}
+
