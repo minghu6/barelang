@@ -3,38 +3,6 @@
 // atom data [] list, 2 factor map list, homomorphism
 // int is usize/isize as default, fixed,
 
-/*
-(0)[Prog]:
-  (1)[BlockStmts]:
-    (2)[BlockStmt]:
-      (3)[Stmt]:
-        (4)[Expr]:
-          (5)[VariableDeclarator]:
-            (6)<id>: t0
-            (6)<eq>: =
-            (6)[VariableInitializer]:
-              (7)[Expr]:
-                (8)[Pri]:
-                  (9)[Lit]:
-                    (10)<intlit>: 5
-        (4)<semi>: ;
-    (2)[BlockStmts]:
-      (3)[BlockStmt]:
-        (4)[Stmt]:
-          (5)[Expr]:
-            (6)[FunCall]:
-              (7)[Id]:
-                (8)<splid>: rs#
-                (8)<id>: printi
-              (7)<paren>: )
-              (7)[ExprList]:
-                (8)[Expr]:
-                  (9)[Pri]:
-                    (10)[Id]:
-                      (11)<id>: t0
-          (5)<semi>: ;
-*/
-
 t0 = 5;
 
 rs#printi(t0);

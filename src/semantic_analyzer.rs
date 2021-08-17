@@ -5,31 +5,24 @@ use std::rc::Rc;
 
 use crate::{
     baredata::*,
-    gram::GramSym,
     syntax_parser::{ASTNode, AST},
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Bare Lang Node
 
-// pub struct AT {
-//     bare_type: String,
-//     bare_data: BareData
-// }
 
-pub fn analyze_semantic(ast: Rc<RefCell<AST>>) {
-    let ast_ref = ast.as_ref().borrow();
-
-    for (sym, ast_node) in ast_ref.elems_vec() {
-        analyze_ast(sym, ast_node);
-    }
+pub fn analyze_semantic(ast: Rc<RefCell<AST>>) -> AT {
+    analyze_ast(&ast)
 }
 
-/////////////////////// 先手写, 再用宏转变
 
-pub fn analyze_ast(sym: &GramSym, ast_node: &ASTNode) -> AT {
-    match sym.to_string().as_str() {
-        "BlockStmts" => AT::BlockStmts(analyze_block_stmts(ast_node)),
+pub fn analyze_ast(ast: &Rc<RefCell<AST>>) -> AT {
+    let ast_ref = ast.as_ref().borrow();
+    let (fstsym, fstnode) = ast_ref.elems_vec().into_iter().next().unwrap();
+
+    match fstsym.to_string().as_str() {
+        "[BlockStmts]" => AT::BlockStmts(analyze_block_stmts(fstnode)),
         //"Block" => analyze_block(ast_node),
         _ => {
             unreachable!()
@@ -37,40 +30,41 @@ pub fn analyze_ast(sym: &GramSym, ast_node: &ASTNode) -> AT {
     }
 }
 
-pub fn analyze_block_stmts(ast_node: &ASTNode) -> BaBlockStmts {
+pub fn analyze_block_stmts(ast_node: &ASTNode) -> Vec<BaBlockStmt> {
     let ast_ref = ast_node.get_ast().unwrap().as_ref().borrow();
-    let elems_iter = ast_ref.elems_vec().into_iter();
+    let mut elems_iter = ast_ref.elems_vec().into_iter();
+    let (_fstsym, fstelem) = elems_iter.next().unwrap();
 
     let mut stmts = vec![];
-    for (_sym, elem) in elems_iter {
-        stmts.push(
-            analyze_block_stmt(elem)
-        );
+
+    stmts.push(
+        analyze_block_stmt(fstelem)
+    );
+
+    if let Some(sndres) = elems_iter.next() {
+        // recur
+        stmts.extend(analyze_block_stmts(sndres.1))
     }
 
-    BaBlockStmts { stmts }
+    stmts
 }
 
 pub fn analyze_block_stmt(ast_node: &ASTNode) -> BaBlockStmt {
     let ast_ref = ast_node.get_ast().unwrap().as_ref().borrow();
     let mut elems_iter = ast_ref.elems_vec().into_iter();
-    let (fstsym, fstelem) = elems_iter.next().unwrap();
+    let (_fstsym, fstelem) = elems_iter.next().unwrap();
 
     BaBlockStmt::Stmt(analyze_stmt(fstelem))
 }
 
 pub fn analyze_block(ast_node: &ASTNode) {
-    let ast_ref = ast_node.get_ast().unwrap().as_ref().borrow();
-
-    for (_sym, ast_node) in ast_ref.elems_vec() {
-        analyze_block_stmts(ast_node);
-    }
+    let _ast_ref = ast_node.get_ast().unwrap().as_ref().borrow();
 }
 
 pub fn analyze_stmt(ast_node: &ASTNode) -> BaStmt {
     let ast_ref = ast_node.get_ast().unwrap().as_ref().borrow();
     let mut elems_iter = ast_ref.elems_vec().into_iter();
-    let (fstsym, fstelem) = elems_iter.next().unwrap();
+    let (_fstsym, fstelem) = elems_iter.next().unwrap();
 
     BaStmt::Expr(analyze_expr(fstelem))
 }
@@ -81,9 +75,15 @@ pub fn analyze_expr(ast_node: &ASTNode) -> BaExpr {
     let (fstsym, fstelem) = elems_iter.next().unwrap();
 
     match fstsym.to_string().as_str() {
-        "Pri" => unimplemented!(),
-        //"FunCall" => analyze_fun_call(fstelem),
-        "VariableDeclarator" => BaExpr::Pri(
+        "[Pri]" => {
+            let pri = analyze_pri(fstelem);
+            BaExpr::Pri(pri)
+            // ignore parse Expr1
+        },
+        "[FunCall]" => BaExpr::FunCall(
+            analyze_fun_call(fstelem)
+        ),
+        "[VariableDeclarator]" => BaExpr::Pri(
             BaPri::Id(analyze_variable_declarator(fstelem))
         ),
         _ => unreachable!(),
@@ -98,24 +98,41 @@ pub fn analyze_pri(ast_node: &ASTNode) -> BaPri {
     let (fstsym, fstelem) = elems_iter.next().unwrap();
 
     match fstsym.to_string().as_str() {
-        "Lit" => BaPri::Val(analyze_lit(fstelem)),
-        "Id" => BaPri::Id(analyze_id(fstelem)),
+        "[Lit]" => BaPri::Val(analyze_lit(fstelem)),
+        "[Id]" => BaPri::Id(analyze_id(fstelem)),
         _ => unreachable!(),
     }
 }
 
-pub fn analyze_expr1(ast_node: &ASTNode) {}
+pub fn analyze_expr1(_ast_node: &ASTNode) {}
 
-pub fn analyze_fun_call(ast_node: &ASTNode) {}
+pub fn analyze_fun_call(ast_node: &ASTNode) -> BaFunCall {
+    let ast_ref = ast_node.get_ast().unwrap().as_ref().borrow();
+
+    let mut elems_iter = ast_ref.elems_vec().into_iter();
+
+    let (_fstsym, fstelem) = elems_iter.next().unwrap();
+    let funid = analyze_id(fstelem);
+
+
+    elems_iter.next().unwrap();  //skip left paren
+    let (_third_sym, third_elem) = elems_iter.next().unwrap();
+    let expr_list = analyze_expr_list(third_elem);
+
+    BaFunCall {
+        name: funid,
+        params: expr_list
+    }
+}
 
 pub fn analyze_variable_declarator(ast_node: &ASTNode) -> BaId {
     let ast_ref = ast_node.get_ast().unwrap().as_ref().borrow();
 
     let mut elems_iter = ast_ref.elems_vec().into_iter();
 
-    let (fstsym, fstelem) = elems_iter.next().unwrap();
+    let (_fstsym, fstelem) = elems_iter.next().unwrap();
     elems_iter.next().unwrap();
-    let (third_sym, third_elem) = elems_iter.next().unwrap();
+    let (_third_sym, third_elem) = elems_iter.next().unwrap();
 
     let name = analyze_t_id(fstelem);
     let expr = analyze_variable_initializer(third_elem);
@@ -132,12 +149,29 @@ pub fn analyze_variable_initializer(ast_node: &ASTNode) -> BaExpr {
 
     let mut elems_iter = ast_ref.elems_vec().into_iter();
 
-    let (fstsym, fstelem) = elems_iter.next().unwrap();
+    let (_fstsym, fstelem) = elems_iter.next().unwrap();
 
     analyze_expr(fstelem)
 }
 
-pub fn analyze_expr_list(ast_node: &ASTNode) {}
+pub fn analyze_expr_list(ast_node: &ASTNode) -> Vec<BaExpr> {
+    let ast_ref = ast_node.get_ast().unwrap().as_ref().borrow();
+    let mut elems_iter = ast_ref.elems_vec().into_iter();
+    let (_fstsym, fstelem) = elems_iter.next().unwrap();
+
+    let mut exprs = vec![];
+
+    exprs.push(
+        analyze_expr(fstelem)
+    );
+
+    if let Some(_comma_pair) = elems_iter.next() {
+        // recur
+        exprs.extend(analyze_expr_list(elems_iter.next().unwrap().1))
+    }
+
+    exprs
+}
 
 pub fn analyze_id(ast_node: &ASTNode) -> BaId {
     let ast_ref = ast_node.get_ast().unwrap().as_ref().borrow();
@@ -147,12 +181,12 @@ pub fn analyze_id(ast_node: &ASTNode) -> BaId {
     let (fstsym, fstelem) = elems_iter.next().unwrap();
 
     match fstsym.to_string().as_str() {
-        "id" => BaId {
+        "<id>" => BaId {
             splid: None,
             name: analyze_t_id(fstelem),
             value: BaVal::Unresolved
         },
-        "splid" => {
+        "<splid>" => {
             let splid = analyze_t_splid(fstelem);
             let t_id = analyze_t_id(elems_iter.next().unwrap().1);
             BaId {
@@ -173,7 +207,7 @@ pub fn analyze_lit(ast_node: &ASTNode) -> BaVal {
     let (fstsym, fstelem) = elems_iter.next().unwrap();
 
     match fstsym.to_string().as_str() {
-        "intlit" => analyze_t_intlit(fstelem),
+        "<intlit>" => analyze_t_intlit(fstelem),
         _ => unreachable!()
     }
 }
@@ -186,7 +220,7 @@ pub fn analyze_t_splid(ast_node: &ASTNode) -> BaSplId {
     let tokv = ast_node.get_token().unwrap().as_ref().value();
 
     match tokv {
-        "rs" => BaSplId::RS,
+        "rs#" => BaSplId::RS,
         _ => unreachable!()
     }
 }
@@ -235,7 +269,6 @@ pub fn analyze_t_intlit(ast_node: &ASTNode) -> BaVal {
 
 #[cfg(test)]
 mod test {
-
     #[test]
     fn test_rust_parse() {
         assert_eq!("-1234".parse::<isize>().unwrap(), -1234);
@@ -260,5 +293,31 @@ mod test {
             ).unwrap(),
             -0xabcd  // actual result is `0xabcd`, sign has been ignored.
         );
+    }
+
+    #[test]
+    fn test_semantics_analyze() {
+        use std::fs;
+
+        use crate::syntax_parser::{ PARSER, Parser };
+        use crate::semantic_analyzer::{analyze_semantic};
+
+        let data0 = fs::read_to_string("./examples/exp0.bare").expect("Unable to read file");
+
+        match (*PARSER).parse(&data0) {
+            Ok(res) => {
+
+                println!("{}", res.as_ref().borrow());
+
+                let at = analyze_semantic(res);
+
+                println!("{:#?}", at);
+
+            },
+            Err(msg) => {
+                eprintln!("{}", msg);
+            }
+        }
+
     }
 }

@@ -37,7 +37,8 @@ pub enum BaPri {
 
 #[derive(Debug)]
 pub enum BaExpr {
-    Pri(BaPri)
+    Pri(BaPri),
+    FunCall(BaFunCall)
 }
 
 #[derive(Debug)]
@@ -50,12 +51,15 @@ pub enum BaBlockStmt {
     Stmt(BaStmt)
 }
 
+
 #[derive(Debug)]
-pub struct BaBlockStmts {
-    pub stmts: Vec<BaBlockStmt>
+pub struct BaFunCall {
+    pub name: BaId,
+    pub params: Vec<BaExpr>
 }
+
 
 #[derive(Debug)]
 pub enum AT {
-    BlockStmts(BaBlockStmts)
+    BlockStmts(Vec<BaBlockStmt>)
 }
