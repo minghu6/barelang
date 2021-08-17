@@ -10,7 +10,7 @@ pub mod gram;
 pub mod rules;
 pub mod dsl;
 pub mod lexer;
-pub mod synax_parser;
+pub mod syntax_parser;
 pub mod semantic_analyzer;
 pub mod baredata;
 pub mod compiler;

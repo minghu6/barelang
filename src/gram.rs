@@ -680,6 +680,16 @@ impl iter::IntoIterator for Gram {
 }
 
 
+////////////////////////////////////////////////////////////////////////////////
+//// BareSym
+
+
+
+/// Annotation Tree
+// pub struct AT {
+//     symbols:
+// }
+
 
 #[cfg(test)]
 #[allow(non_snake_case)]

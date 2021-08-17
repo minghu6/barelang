@@ -1,5 +1,5 @@
 
-use crate::synax_parser::{
+use crate::syntax_parser::{
     PARSER, Parser
 };
 

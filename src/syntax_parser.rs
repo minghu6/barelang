@@ -98,6 +98,10 @@ impl AST {
         self.elems.keys().cloned().collect_vec()
     }
 
+    pub fn elems_vec(&self) -> Vec<(&GramSym, &ASTNode)> {
+        self.elems.iter().collect_vec()
+    }
+
     pub fn get_elem(&self, sym: &GramSym) -> Option<&ASTNode> {
         self.elems.get(sym)
     }
@@ -496,7 +500,7 @@ lazy_static! {
 
 #[cfg(test)]
 mod test {
-    use crate::synax_parser::Parser;
+    use crate::syntax_parser::Parser;
 
     #[test]
     fn test_synax() {
