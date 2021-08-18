@@ -109,9 +109,4 @@ pub trait BareData {
 }
 
 
-// impl BareData for BarePri {
-//     fn codegen() {
-//         todo!()
-//     }
-// }
 
