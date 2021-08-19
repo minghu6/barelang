@@ -9,8 +9,11 @@ use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, Targe
 use inkwell::types::FunctionType;
 use inkwell::values::{BasicValueEnum, FunctionValue, IntValue};
 
+use lazy_static::lazy_static;
+
 use std::error::Error;
 use std::path::Path;
+use std::env;
 
 use crate::baredata::*;
 
@@ -98,14 +101,88 @@ fn hardcode_codegen() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn codegen() -> Result<(), Box<dyn Error>> {
+pub fn codegen(frame_vec: Vec<StackFrame>) -> Result<(), Box<dyn Error>> {
+    let context = Context::create();
+    let mut module = context.create_module("test");
+    let builder = context.create_builder();
+
+    codegen_moudle(&mut module, &builder, frame_vec);
+
+    ///////////////////////////////////////////////////////////////////////////
+    //// Target Generation
+    Target::initialize_native(&InitializationConfig::default())?;
+
+    let triple = TargetMachine::get_default_triple();
+    module.set_triple(&triple);
+
+    let target = Target::from_triple(&triple).unwrap();
+
+    let machine = target.create_target_machine(
+        &triple,
+        "generic",
+        "",
+        OptimizationLevel::Default,
+        RelocMode::Default,
+        CodeModel::Default
+    ).unwrap();
+
+    module.set_data_layout(&machine.get_target_data().get_data_layout());
+
+    let pwd = env::current_dir().unwrap();
+    let output_path = pwd.join("output.o");
+
+    machine.write_to_file(&module, inkwell::targets::FileType::Object, Path::new(&output_path))?;
 
     Ok(())
 }
 
-pub trait BareData {
-    fn codegen();
 
+fn codegen_moudle(module: &Module, builder: &Builder, frame_vec: Vec<StackFrame>, ) {
+    for frame in frame_vec.iter() {
+        codegen_frame(module, builder, frame)
+    }
+}
+
+fn codegen_frame(module: &Module, builder: &Builder, frame: &StackFrame) {
+    let frame_ref = frame.frame_ref();
+
+    for blkstmtref in frame_ref.blockstmts.iter() {
+        let block_stmt = blkstmtref.block_stmt_ref();
+        match &*block_stmt {
+            BaBlockStmt::Stmt(stmt) => {
+                match stmt {
+                    BaStmt::Expr(expr) => {
+                        match expr {
+                            BaExpr::FunCall(funcall) => {
+                                // search fun ref
+                                let fid = &funcall.name;
+
+                                match fid.splid {
+                                    Some(BaSplId::RS) => {
+                                        search_f_proto(fid.name)
+                                    },
+                                    None => {
+
+                                    }
+                                }
+                            },
+                            _ => {},
+                        }
+                    }
+                }
+            },
+        }
+    }
+}
+
+pub struct CodeGenCtx<'a> {
+    pub context: &'a Context,
+    pub module: &'a Module<'a>,
+    pub builder: &'a Builder<'a>
+}
+
+pub trait CodeGen {
+    fn codegen(&self, module: &Module, builder: &Builder, );
 }
 
 

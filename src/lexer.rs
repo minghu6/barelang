@@ -7,7 +7,6 @@ use std::{fmt, vec};
 
 use crate::gram::*;
 use crate::rules::{LexSt, barelang_lexdfamap, barelang_token_matcher_vec};
-use crate::*;
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -244,7 +243,7 @@ mod test {
         use crate::lexer::tokenize;
         use std::fs;
 
-        let data0 = fs::read_to_string("./examples/exp0.bare").expect("Unable to read file");
+        let data0 = fs::read_to_string("./examples/exp0.ba").expect("Unable to read file");
 
         let tokens = tokenize(&data0);
 

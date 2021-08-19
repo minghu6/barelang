@@ -16,11 +16,8 @@ pub mod baredata;
 pub mod compiler;
 pub mod codegen;
 pub mod utils;
+pub mod error;
 
-
-extern crate proc_macros; /* to avoid a cargo bug when cross-compiling (e.g. wasm) */
-
-extern crate lazy_static;
 
 pub use proc_macros::{
     make_vec_macro_rules,

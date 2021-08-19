@@ -419,7 +419,7 @@ mod test {
 
         use crate::syntax_parser::{ PARSER, Parser };
 
-        let data0 = fs::read_to_string("./examples/exp0.bare").expect("Unable to read file");
+        let data0 = fs::read_to_string("./examples/exp0.ba").expect("Unable to read file");
 
         match (*PARSER).parse(&data0) {
             Ok(res) => {
