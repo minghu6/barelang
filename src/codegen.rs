@@ -104,7 +104,7 @@ fn hardcode_codegen() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub fn codegen(frame_vec: Vec<StackFrame>) -> Result<(), Box<dyn Error>> {
+pub fn codegen(frame_vec: Vec<StackFrame>, output: &str) -> Result<(), Box<dyn Error>> {
 
     let context = Context::create();
     let module = context.create_module("test");
@@ -159,7 +159,6 @@ pub fn codegen(frame_vec: Vec<StackFrame>) -> Result<(), Box<dyn Error>> {
                                     // codegen fun call args
                                     let args_vec = codegen_args(&context, funcall);
 
-                                    println!("args_vec: {:?}", args_vec);
                                     builder.build_call(
                                         fnval,
                                         &args_vec[..],
@@ -200,10 +199,7 @@ pub fn codegen(frame_vec: Vec<StackFrame>) -> Result<(), Box<dyn Error>> {
 
     module.set_data_layout(&machine.get_target_data().get_data_layout());
 
-    let pwd = env::current_dir().unwrap();
-    let output_path = pwd.join("output.o");
-
-    machine.write_to_file(&module, inkwell::targets::FileType::Object, Path::new(&output_path))?;
+    machine.write_to_file(&module, inkwell::targets::FileType::Object, Path::new(&output))?;
 
     Ok(())
 }

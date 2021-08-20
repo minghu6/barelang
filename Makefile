@@ -22,6 +22,8 @@ testrlib: build copybin
 	@ gcc main.o output.o libbare.so -Xlinker -rpath ./ -o main
 	@ ./main
 
+getbac: build copybin
+
 testexp0: build copybin
 	@./${BARE_COMPILER} ./examples/exp0.ba
 	@ rustc --crate-type cdylib lib/libbare.rs -o libbare.so

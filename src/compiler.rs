@@ -16,13 +16,13 @@ use crate::error::{
 
 
 /// Compile source code string
-pub fn compile(source: &str) -> Result<(), Box<dyn Error>> {
-    match (*PARSER).parse(&source) {
+pub fn compile(codestr: &str, output: &str) -> Result<(), Box<dyn Error>> {
+    match (*PARSER).parse(&codestr) {
         Ok(ast) => {
             println!("AST:\n{}", ast.as_ref().borrow());
             let frames = analyze_semantic(ast);
             println!("StackFrames:\n{:#?}", frames);
-            codegen(frames)?;
+            codegen(frames, output)?;
             Ok(())
         },
         Err(msg) => {
