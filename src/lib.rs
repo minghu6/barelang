@@ -15,6 +15,7 @@ pub mod semantic_analyzer;
 pub mod baredata;
 pub mod compiler;
 pub mod codegen;
+pub mod rslib;
 pub mod utils;
 pub mod error;
 

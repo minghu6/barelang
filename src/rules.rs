@@ -332,6 +332,7 @@ pub fn barelang_gram() -> Gram {
 
         BlockStmt:
         | Stmt;
+        | VariableDeclarator;
 
         Stmt:
         | semi;
@@ -340,7 +341,6 @@ pub fn barelang_gram() -> Gram {
         Expr:
         | Pri Expr1;
         | FunCall;
-        | VariableDeclarator;
 
         VariableDeclarator:
         | id eq VariableInitializer;

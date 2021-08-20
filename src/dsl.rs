@@ -188,3 +188,15 @@ macro_rules! token_analyzer {
         }
     }
 }
+
+// #[macro_export]
+// macro_rules! ctxtype {
+//     ( $exref_t:ident, $ctx:ident ) => {
+//         {
+//             match $exref_t {
+//                 ExRefType::I64 => $ctx.i64_type(),
+//                 ExRefType::F64 => $ctx.f64_type()
+//             }
+//         }
+//     };
+// }

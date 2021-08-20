@@ -3,12 +3,17 @@
 use std::{cell::{Ref, RefCell, RefMut}, fmt::Debug, rc::Rc};
 
 use indexmap::IndexMap;
+use inkwell::{context::Context, types::FunctionType};
 
+
+////////////////////////////////////////////////////////////////////////////////
+//// Bare Language Data Structure
 
 #[derive(Debug, Clone)]
 pub enum BaNum {
     USize(usize),
     ISize(isize),
+    I64(i64),
     U8(u8),
     Float(f64)  // 64 bit float
 }
@@ -41,25 +46,26 @@ pub enum BaPri {
 #[derive(Debug)]
 pub enum BaExpr {
     Pri(BaPri),
-    Declare(BaId),
-    FunCall(BaFunCall)
+    FunCall(BaFunCall),
 }
 
 #[derive(Debug)]
 pub enum BaStmt {
-    Expr(BaExpr)
+    Expr(BaExpr),
+    Empty  // semi
 }
 
 
 #[derive(Debug)]
 pub struct BaFunCall {
     pub name: BaId,
-    pub params: Vec<BaExpr>
+    pub args: Vec<BaExpr>
 }
 
 #[derive(Debug)]
 pub enum BaBlockStmt {
-    Stmt(BaStmt)
+    Stmt(BaStmt),
+    Declare(BaId),
 }
 
 #[derive(Debug)]
@@ -85,6 +91,19 @@ pub enum ModuleLisp {
     BlockStmts(Vec<BaBlockStmtRef>)
 }
 
+
+pub enum ExRefType {
+    I64,
+    F64
+}
+
+pub struct ExRefFunProto {
+    pub name: String,
+    pub funtype_getter: fn(ctx: &Context) -> FunctionType
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//// Stack Frame
 
 #[derive(Debug)]
 pub struct _StackFrame {

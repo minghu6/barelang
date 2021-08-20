@@ -1,6 +1,7 @@
 //! Semantic Analyzer: translates synax tree into annotation tree manually.
 
 use indexmap::indexmap;
+use itertools::Itertools;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -13,7 +14,9 @@ use crate::{
 
 
 pub fn analyze_semantic(ast: Rc<RefCell<AST>>) -> Vec<StackFrame> {
-    let ml = analyze_ast(&ast);
+    let mut ml = analyze_ast(&ast);
+
+    flatten_expr(&mut ml);
 
     // build stack frame vector
     let mut frames = build_stack_frames(ml);
@@ -66,9 +69,17 @@ fn analyze_block_stmts(ast_node: &ASTNode) -> Vec<BaBlockStmtRef> {
 fn analyze_block_stmt(ast_node: &ASTNode) -> BaBlockStmt {
     let ast_ref = ast_node.get_ast().unwrap().as_ref().borrow();
     let mut elems_iter = ast_ref.elems_vec().into_iter();
-    let (_fstsym, fstelem) = elems_iter.next().unwrap();
+    let (fstsym, fstelem) = elems_iter.next().unwrap();
 
-    BaBlockStmt::Stmt(analyze_stmt(fstelem))
+    match fstsym.to_string().as_str() {
+        "[Stmt]" => {
+            BaBlockStmt::Stmt(analyze_stmt(fstelem))
+        },
+        "[VariableDeclarator]" => BaBlockStmt::Declare(
+            analyze_variable_declarator(fstelem)
+        ),
+        _ => unreachable!()
+    }
 }
 
 #[allow(unused)]
@@ -79,9 +90,14 @@ fn analyze_block(ast_node: &ASTNode) {
 fn analyze_stmt(ast_node: &ASTNode) -> BaStmt {
     let ast_ref = ast_node.get_ast().unwrap().as_ref().borrow();
     let mut elems_iter = ast_ref.elems_vec().into_iter();
-    let (_fstsym, fstelem) = elems_iter.next().unwrap();
+    let (fstsym, fstelem) = elems_iter.next().unwrap();
 
-    BaStmt::Expr(analyze_expr(fstelem))
+    println!("analyze stmt {}", ast_ref);
+    match fstsym.to_string().as_str() {
+        "[Expr]" => BaStmt::Expr(analyze_expr(fstelem)),
+        "<semi>" => BaStmt::Empty,
+        _ => unreachable!()
+    }
 }
 
 fn analyze_expr(ast_node: &ASTNode) -> BaExpr {
@@ -97,9 +113,6 @@ fn analyze_expr(ast_node: &ASTNode) -> BaExpr {
         },
         "[FunCall]" => BaExpr::FunCall(
             analyze_fun_call(fstelem)
-        ),
-        "[VariableDeclarator]" => BaExpr::Declare(
-            analyze_variable_declarator(fstelem)
         ),
         _ => unreachable!(),
     }
@@ -139,7 +152,7 @@ fn analyze_fun_call(ast_node: &ASTNode) -> BaFunCall {
 
     BaFunCall {
         name: funid,
-        params: expr_list
+        args: expr_list
     }
 }
 
@@ -285,16 +298,41 @@ fn analyze_t_intlit(ast_node: &ASTNode) -> BaVal {
 }
 
 
+////////////////////////////////////////////////////////////////////////////////
+//// Bare Lang semantics analyze :- Expr expand
+//// Transfer BaVal::Expr => BaVal::BaPri
+fn flatten_expr(ml: &mut ModuleLisp) {
+    match ml {
+        ModuleLisp::BlockStmts(blkstmtref_vec) => {
+            for blkstmtref in blkstmtref_vec.iter() {
+                match &mut *blkstmtref.block_stmt_ref_mut() {
+                    BaBlockStmt::Declare(baid) => {
+                        match &mut baid.value {
+                            BaVal::Expr(expr) => {
+                                match expr.as_ref() {
+                                    BaExpr::Pri(pri) => {
+                                        match pri {
+                                            BaPri::Val(val) => {
+                                                baid.value = val.clone();
+                                            },
+                                            _ => {}
+                                        }
+                                    },
+                                    _ => {}
+                                }
+                            },
+                            _ => {}
+                        }
+                    },
+                    _ => {}
+                }
+            }
+        }
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Bare Lang semantics analyze step 1:- Ref Resolver
-
-//fn
-// impl From<BaBlockStmtRef> for StackFrame {
-//     fn from(blockstmtref: BaBlockStmtRef) -> Self {
-//         blockstmtref.block_stmt_ref()
-//     }
-// }
 
 fn build_stack_frames(ml: ModuleLisp) -> Vec<StackFrame> {
     let mut frames = vec![];
@@ -305,29 +343,30 @@ fn build_stack_frames(ml: ModuleLisp) -> Vec<StackFrame> {
 
             for blkstmtref in blkstmtref_vec.iter() {
                 match &*blkstmtref.block_stmt_ref() {
-                    BaBlockStmt::Stmt(stmt) => {
-                        match stmt {
-                            BaStmt::Expr(expr) => {
-                                match expr {
-                                    BaExpr::Declare(baid) => {
-                                        syms_map.insert(
-                                            baid.name.clone(),
-                                            baid.clone()
-                                        );
-                                    },
-                                    _ => {}
-                                }
-                            },
-
-                        }
+                    BaBlockStmt::Declare(baid) => {
+                        syms_map.insert(
+                            baid.name.clone(),
+                            baid.clone()
+                        );
                     },
+                    _ => {}
                 }
             }
 
             frames.push(
             StackFrame::new(
                 syms_map,
-                blkstmtref_vec,
+                blkstmtref_vec
+                .into_iter()
+                .filter(|blkstmtref| {
+                    if let BaBlockStmt::Stmt(stmt) = &*blkstmtref.block_stmt_ref() {
+                        if let BaStmt::Empty = stmt { false } else { true }
+                    }
+                    else {
+                        true
+                    }
+                })
+                .collect_vec(),
                 None,
                 vec![]
             ));
@@ -347,8 +386,8 @@ fn resolve_ref(frames: &mut Vec<StackFrame>) {
                         BaStmt::Expr(expr) => {
                             match expr {
                                 BaExpr::FunCall(funcall) => {
-                                    for param in funcall.params.iter() {
-                                        match param {
+                                    for arg in funcall.args.iter() {
+                                        match arg {
                                             BaExpr::Pri(pri) => {
                                                 match pri {
                                                     BaPri::Id(idrc) => {
@@ -373,9 +412,10 @@ fn resolve_ref(frames: &mut Vec<StackFrame>) {
                                 _ => {}
                             }
                         },
-
+                        BaStmt::Empty => {}
                     }
                 },
+                _ => {}
             }
         }
     }

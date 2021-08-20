@@ -10,9 +10,8 @@ use crate::rules::{LexSt, barelang_lexdfamap, barelang_token_matcher_vec};
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/////// Lexer
+//// Token
 
-/// Token
 #[derive(Debug, Clone)]
 pub struct Token {
     name: String,

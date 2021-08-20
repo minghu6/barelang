@@ -6,5 +6,10 @@
 t0 = 5;
 
 rs#printi(t0);
+rs#printi(55);
+rs#printi(66);
+rs#printi(77);
+rs#printi(88);
+
 
 // t1 = [1 2 3 4];

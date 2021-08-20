@@ -6,17 +6,20 @@ use inkwell::context::Context;
 use inkwell::module::{Linkage, Module};
 use inkwell::passes::{PassManager, PassManagerBuilder};
 use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
-use inkwell::types::FunctionType;
+use inkwell::types::{BasicTypeEnum, FunctionType, IntType};
 use inkwell::values::{BasicValueEnum, FunctionValue, IntValue};
 
 use lazy_static::lazy_static;
+
+use indexmap::indexset;
 
 use std::error::Error;
 use std::path::Path;
 use std::env;
 
 use crate::baredata::*;
-
+use crate::*;
+use crate::rslib::search_rs_lib;
 
 #[allow(unused)]
 fn hardcode_codegen() -> Result<(), Box<dyn Error>> {
@@ -102,11 +105,80 @@ fn hardcode_codegen() -> Result<(), Box<dyn Error>> {
 }
 
 pub fn codegen(frame_vec: Vec<StackFrame>) -> Result<(), Box<dyn Error>> {
+
     let context = Context::create();
-    let mut module = context.create_module("test");
+    let module = context.create_module("test");
     let builder = context.create_builder();
 
-    codegen_moudle(&mut module, &builder, frame_vec);
+    /* Create Main Function */
+    let i64_type = context.i64_type();
+    let fn_main_t = i64_type.fn_type(&[], false);
+    let fn_main = module.add_function("main", fn_main_t, None);
+    let blk_main = context.append_basic_block(fn_main, "mainblk");
+    builder.position_at_end(blk_main);
+
+    /* rs external function */
+
+    for frame in frame_vec.iter() {
+        let frame_ref = frame.frame_ref();
+
+        for blkstmtref in frame_ref.blockstmts.iter() {
+            let block_stmt = blkstmtref.block_stmt_ref();
+            match &*block_stmt {
+                BaBlockStmt::Stmt(stmt) => {
+                    match stmt {
+                        BaStmt::Expr(expr) => {
+                            match expr {
+                                BaExpr::FunCall(funcall) => {
+                                    // search fun ref
+                                    let fid = &funcall.name;
+
+                                    let fnval;
+                                    match fid.splid {
+                                        Some(BaSplId::RS) => {
+                                            let funtype;
+                                            if let Some(getter) = search_rs_lib(&fid.name) {
+                                                funtype = getter(&context);
+                                            }
+                                            else {
+                                                unreachable!()
+                                            }
+
+                                            if let Some(_fnval) = module.get_function(&fid.name) {
+                                                fnval = _fnval;
+                                            }
+                                            else {
+                                                fnval = module.add_function(&fid.name, funtype, Some(Linkage::External));
+                                            }
+                                        },
+                                        None => {
+                                            unreachable!()
+                                        }
+                                    }
+
+                                    // codegen fun call args
+                                    let args_vec = codegen_args(&context, funcall);
+
+                                    println!("args_vec: {:?}", args_vec);
+                                    builder.build_call(
+                                        fnval,
+                                        &args_vec[..],
+                                        &fid.name
+                                    );
+
+                                },
+                                _ => {},
+                            }
+                        }
+                        BaStmt::Empty => {}
+                    }
+                },
+                _ => {}
+            }
+        }
+    }
+
+    builder.build_return(Some(&i64_type.const_zero()));
 
     ///////////////////////////////////////////////////////////////////////////
     //// Target Generation
@@ -137,53 +209,74 @@ pub fn codegen(frame_vec: Vec<StackFrame>) -> Result<(), Box<dyn Error>> {
 }
 
 
-fn codegen_moudle(module: &Module, builder: &Builder, frame_vec: Vec<StackFrame>, ) {
-    for frame in frame_vec.iter() {
-        codegen_frame(module, builder, frame)
-    }
-}
+// fn codegen_moudle<'a>(frame_vec: Vec<StackFrame>, ) -> (Module<'a>, Context) {
 
-fn codegen_frame(module: &Module, builder: &Builder, frame: &StackFrame) {
-    let frame_ref = frame.frame_ref();
 
-    for blkstmtref in frame_ref.blockstmts.iter() {
-        let block_stmt = blkstmtref.block_stmt_ref();
-        match &*block_stmt {
-            BaBlockStmt::Stmt(stmt) => {
-                match stmt {
-                    BaStmt::Expr(expr) => {
-                        match expr {
-                            BaExpr::FunCall(funcall) => {
-                                // search fun ref
-                                let fid = &funcall.name;
+//     (module, context)
+// }
 
-                                match fid.splid {
-                                    Some(BaSplId::RS) => {
-                                        search_f_proto(fid.name)
+/// codegen after flatten the expression
+fn codegen_args<'a>(context: &'a Context, funcall: &BaFunCall) -> Vec<BasicValueEnum<'a>> {
+    let mut args_vec = Vec::<BasicValueEnum>::new();
+
+    funcall.args.iter().for_each(|arg| {
+        match arg {
+            BaExpr::Pri(pri) => {
+                match pri {
+                    BaPri::Id(idcell) => {
+                        let idref = idcell.as_ref().borrow();
+                        let val = &idref.value;
+
+                        match val {
+                            BaVal::Num(num) => {
+                                match num {
+                                    BaNum::I64(v) => {
+                                        let i64_t = context.i64_type();
+                                        args_vec.push(
+                                            BasicValueEnum::IntValue(i64_t.const_int(*v as u64, true))
+                                        );
                                     },
-                                    None => {
-
-                                    }
+                                    BaNum::USize(v) => {
+                                        let i64_t = context.i64_type();
+                                        args_vec.push(
+                                            BasicValueEnum::IntValue(i64_t.const_int(*v as u64, true))
+                                        );
+                                    },
+                                    _ => {}
                                 }
                             },
-                            _ => {},
+                            _ => {}
                         }
-                    }
+                    },
+                    BaPri::Val(val) => {
+                        match val {
+                            BaVal::Num(num) => {
+                                match num {
+                                    BaNum::I64(v) => {
+                                        let i64_t = context.i64_type();
+                                        args_vec.push(
+                                            BasicValueEnum::IntValue(i64_t.const_int(*v as u64, true))
+                                        );
+                                    },
+                                    BaNum::USize(v) => {
+                                        let i64_t = context.i64_type();
+                                        args_vec.push(
+                                            BasicValueEnum::IntValue(i64_t.const_int(*v as u64, true))
+                                        );
+                                    },
+                                    _ => {}
+                                }
+                            },
+                            _ => {}
+                        }
+                    },
+                    //_ => {}
                 }
             },
+            _ => {}
         }
-    }
+    });
+
+    args_vec
 }
-
-pub struct CodeGenCtx<'a> {
-    pub context: &'a Context,
-    pub module: &'a Module<'a>,
-    pub builder: &'a Builder<'a>
-}
-
-pub trait CodeGen {
-    fn codegen(&self, module: &Module, builder: &Builder, );
-}
-
-
 
