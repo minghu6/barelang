@@ -60,7 +60,7 @@ fn analyze_block_stmts(ast_node: &ASTNode) -> Vec<BaBlockStmtRef> {
 
     if let Some(sndres) = elems_iter.next() {
         // recur
-        stmts.extend(analyze_block_stmts(sndres.1))
+        stmts.extend(analyze_block_stmts(&sndres.1))
     }
 
     stmts
@@ -190,8 +190,8 @@ fn analyze_expr1(ast_node: &ASTNode) -> (Stack<BaBOp>, Stack<BaPri>) {
     let ast_ref = ast_node.get_ast().unwrap().as_ref().borrow();
     let mut elems_iter = ast_ref.elems_vec().into_iter();
 
-    let bop = analyze_bop(elems_iter.next().unwrap().1);
-    let pri = analyze_pri(elems_iter.next().unwrap().1);
+    let bop = analyze_bop(&elems_iter.next().unwrap().1);
+    let pri = analyze_pri(&elems_iter.next().unwrap().1);
 
     if let Some((_thirdsym, thirdelem)) = elems_iter.next() {
         let (mut bopstack, mut pristack)
@@ -278,7 +278,7 @@ fn analyze_expr_list(ast_node: &ASTNode) -> Vec<BaExpr> {
 
     if let Some(_comma_pair) = elems_iter.next() {
         // recur
-        exprs.extend(analyze_expr_list(elems_iter.next().unwrap().1))
+        exprs.extend(analyze_expr_list(&elems_iter.next().unwrap().1))
     }
 
     exprs
@@ -299,7 +299,7 @@ fn analyze_id(ast_node: &ASTNode) -> BaId {
         },
         "<splid>" => {
             let splid = analyze_t_splid(fstelem);
-            let t_id = analyze_t_id(elems_iter.next().unwrap().1);
+            let t_id = analyze_t_id(&elems_iter.next().unwrap().1);
             BaId {
                 splid: Some(splid),
                 name: t_id,

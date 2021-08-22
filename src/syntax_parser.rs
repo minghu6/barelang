@@ -1,6 +1,5 @@
 //! Synax Parser: translates directly into synax tree based on rule.rs.
 
-use indexmap::{indexmap, IndexMap};
 use itertools::Itertools;
 use lazy_static::lazy_static;
 
@@ -79,14 +78,14 @@ impl fmt::Display for ASTNode {
 pub struct AST {
     /// AST's grammar type
     sym: GramSym,
-    elems: IndexMap<GramSym, ASTNode>,
+    elems: Vec<(GramSym, ASTNode)>,
 }
 
 impl AST {
     pub fn new(sym: &GramSym) -> Self {
         Self {
             sym: sym.clone(),
-            elems: indexmap! {},
+            elems: vec![],
         }
     }
 
@@ -95,33 +94,37 @@ impl AST {
     }
 
     pub fn elem_syms(&self) -> Vec<GramSym> {
-        self.elems.keys().cloned().collect_vec()
+        self.elems.iter().map(|x| x.0.clone()).collect_vec()
     }
 
-    pub fn elems_vec(&self) -> Vec<(&GramSym, &ASTNode)> {
+    pub fn elems_vec(&self) -> Vec<&(GramSym, ASTNode)> {
         self.elems.iter().collect_vec()
     }
 
     pub fn get_elem(&self, sym: &GramSym) -> Option<&ASTNode> {
-        self.elems.get(sym)
+        for (each_sym, each_elem) in self.elems.iter() {
+            if each_sym == sym { return Some(each_elem) }
+        }
+
+        None
     }
 
     pub fn insert_leaf(&mut self, token: Token) {
         let leaf_name = token.to_gram_sym();
         let leaf = ASTNode::Leaf(Rc::new(token));
 
-        self.elems.insert(leaf_name, leaf);
+        self.elems.push((leaf_name, leaf));
     }
 
     pub fn insert_tree(&mut self, tree: Rc<RefCell<AST>>) {
         let tree_name = tree.as_ref().borrow().sym().clone();
         let tree = ASTNode::Tree(tree);
 
-        self.elems.insert(tree_name, tree);
+        self.elems.push((tree_name, tree));
     }
 
     pub fn insert_node(&mut self, node: ASTNode) {
-        self.elems.insert(node.to_gram_sym().to_owned(), node);
+        self.elems.push((node.to_gram_sym().to_owned(), node));
     }
 
     fn dump(&self, f: &mut fmt::Formatter, padlevel: usize) -> fmt::Result {
@@ -145,7 +148,7 @@ impl AST {
                 ASTNode::Leaf(token) => {
                     new_tree
                         .elems
-                        .insert(sym.clone(), ASTNode::Leaf(token.clone()));
+                        .push((sym.clone(), ASTNode::Leaf(token.clone())));
                 }
                 ASTNode::Tree(subtree) => {
                     new_tree.insert_tree(subtree.as_ref().borrow().copy_tree());
@@ -301,10 +304,9 @@ fn _ll1_parse(
         return Err("empty tokens".to_string());
     }
 
-    debug_assert!(
-        !states_stack.is_empty(),
-        "states stack should keep filled up by invoker"
-    );
+    if states_stack.is_empty() {
+        return Err("states stack should keep filled up by invoker".to_string());
+    }
 
     let root = states_stack[0].0.clone();
     let tokenslen = tokens.len();
@@ -346,35 +348,59 @@ fn _ll1_parse(
                     println!("! eaten token: {:?}", tokens[i]);
 
                     i += 1;
-                    while i < tokenslen && tokens[i].name().ends_with("comment") {
-                        println!("...skip comment token: {}", tokens[i]);
-                        i += 1;
-                    }
+                    // while i < tokenslen && tokens[i].name().ends_with("comment") {
+                    //     println!("...skip comment token: {}", tokens[i]);
+                    //     i += 1;
+                    // }
                     if i == tokenslen {
                         break;
                     }
-                } else {
+                }
+                else {
                     return Err(format!(
                         "Unmatched token{}, a {} expected",
                         tokens[i], right_sym
                     ));
                 }
-            } else {
+            }
+            else {
                 // handle nonterminal
                 // LL(1)的带回溯的分支预测
+                // case-0 (recur epsilon skip)
                 // case-1 (just goon)
                 // case-2 (push, loop continue)
                 // case-3 (return res<ok/error>)
                 // case-4 (error)
+
+                // 为方便起见先处理epsilon转换的情况
+                if let Some(_) = parser.get_pred_str(&PredSetSym::Epsilon, &right_sym) {
+                    println!("?.? try to skip epsilon: `{}` (token: {})", right_sym, tokens[i]);
+                    states_stack.push((cur_ast.clone(), symstr_stack.clone()));
+
+                    // 实际上是拷贝了整个树
+                    let new_states_stack = _copy_ll1_states_stack(&states_stack);
+
+                    let (_, new_tokens) = tokens.split_at(i);
+
+                    // right_sym 完成匹配
+                    if let Ok(_res) = _ll1_parse(parser, new_tokens, new_states_stack) {
+                        return Ok(_res);
+                    } else {
+                        println!("*<x `{}`", right_sym);
+                    }
+
+                    // clean env
+                    states_stack.pop();
+                }
 
                 if let Some(poss_brs) =
                     parser.get_pred_str(&tokens[i].to_pred_set_sym(), &right_sym)
                 {
                     let sub_sym_tree = Rc::new(RefCell::new(AST::new(&right_sym)));
                     cur_ast
-                        .as_ref()
-                        .borrow_mut()
-                        .insert_tree(sub_sym_tree.clone());
+                    .as_ref()
+                    .borrow_mut()
+                    .insert_tree(sub_sym_tree.clone());
                     states_stack.push((cur_ast.clone(), symstr_stack.clone()));
 
                     // case-1
@@ -401,16 +427,21 @@ fn _ll1_parse(
                     let mut poss_brs_iter = poss_brs.into_iter();
 
                     while let Some(pred_symstr) = poss_brs_iter.next() {
-                        let norm_sym_vec = pred_symstr.get_normal().unwrap();
+                        if let GramSymStr::Str(norm_sym_vec) = pred_symstr {
+                            println!(
+                                "?>? `{}`: `{}`",
+                                right_sym,
+                                GramSymStr::Str(norm_sym_vec.clone())
+                            );
 
-                        println!(
-                            "?>? `{}`: `{}`",
-                            right_sym,
-                            GramSymStr::Str(norm_sym_vec.clone())
-                        );
+                            states_stack
+                                .push((sub_sym_tree.clone(), Stack::from(norm_sym_vec.clone())));
 
-                        states_stack
-                            .push((sub_sym_tree.clone(), Stack::from(norm_sym_vec.clone())));
+                        }
+                        else {  // Epsilon
+                            unreachable!("epsillon 在之前已被单独处理")
+                        }
+
                         // 实际上是拷贝了整个树
                         let new_states_stack = _copy_ll1_states_stack(&states_stack);
 

@@ -5,14 +5,14 @@
 // a', a'', a'''
 // a1 a2 a3
 
-t0 = 5;
+//t0 = 5;
 // t1 = 1 + 4 * 3 / 2 - 6;
-t2 = 1 * 2 * 3 + 4 % 2;
-t3=1+2-3;
+//t2 = 1 * 2 * 3 + 4 % 2;
+//t3=1+2-3;
 
-rs#printi(t0);
+//rs#printi(t0);
 //rs#printi(55);
-//rs#printi(66);
+rs#printi(66);
 //rs#printi(77);
 //rs#printi(88);
 

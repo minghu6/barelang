@@ -375,6 +375,7 @@ pub fn barelang_gram() -> Gram {
         Pri:
         | Lit;
         | Id;
+        | paren Expr paren;
 
         Id:
         | id;
