@@ -26,9 +26,7 @@ getbac: build copybin
 
 testexp0: build copybin
 	@./${BARE_COMPILER} ./examples/exp0.ba
-	@ rustc --crate-type cdylib lib/libbare.rs -o libbare.so
-	@ gcc output.o libbare.so -Xlinker -rpath ./ -o main
-	@ ./main
+	@ ./a.out
 
 dump:
 	@ objdump -xsd ./output.o

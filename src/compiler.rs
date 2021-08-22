@@ -27,7 +27,7 @@ pub fn compile(codestr: &str, output: &str) -> Result<(), Box<dyn Error>> {
         },
         Err(msg) => {
             eprintln!("{}", msg);
-            Err(BaCErr::new(&msg))
+            Err(BaCErr::new_box_err(&msg))
         }
     }
 }

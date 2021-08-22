@@ -67,7 +67,7 @@ impl <T> Stack<T> {
         self._value_vec.pop()
     }
 
-    pub fn top(&self) -> Option<&T> {
+    pub fn peek(&self) -> Option<&T> {
         self._value_vec.last()
     }
 

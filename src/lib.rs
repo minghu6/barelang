@@ -2,6 +2,7 @@
 #![feature(min_type_alias_impl_trait)]
 #![feature(destructuring_assignment)]
 #![feature(impl_trait_in_bindings)]
+#![feature(let_chains)]
 
 #![allow(mixed_script_confusables)]
 #![allow(incomplete_features)]
@@ -12,7 +13,7 @@ pub mod dsl;
 pub mod lexer;
 pub mod syntax_parser;
 pub mod semantic_analyzer;
-pub mod baredata;
+pub mod badata;
 pub mod compiler;
 pub mod codegen;
 pub mod rslib;

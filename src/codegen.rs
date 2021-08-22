@@ -17,7 +17,7 @@ use std::error::Error;
 use std::path::Path;
 use std::env;
 
-use crate::baredata::*;
+use crate::badata::*;
 use crate::*;
 use crate::rslib::search_rs_lib;
 

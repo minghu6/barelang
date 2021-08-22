@@ -16,9 +16,13 @@ impl Error for BaCErr {}
 
 
 impl BaCErr {
-    pub fn new(msg: &str) -> Box<dyn Error> {
-        Box::new(Self {
+    pub fn new_box_err(msg: &str) -> Box<dyn Error> {
+        Box::new(Self::new(msg))
+    }
+
+    pub fn new(msg: &str) -> Self {
+        Self {
             msg: msg.to_string()
-        })
+        }
     }
 }

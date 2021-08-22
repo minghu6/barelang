@@ -185,7 +185,11 @@ pub fn tokenize(source: &str) -> Vec<Token> {
         let found_item;
         match matched_items.len() {
             0 => {
-                unreachable!()
+                unreachable!(
+                    format!(
+                    "cur_st: {:?}, input:<{}>", cur_st, c
+                    )
+                )
             },
             1 => {
                 found_item = matched_items.first().unwrap();

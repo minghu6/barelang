@@ -32,7 +32,7 @@ fn unique_suffix() -> String {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let matches = clap_app!(_bac =>
+    let matches = clap_app!(bac =>
         (version: "0.1.0")
         (author: "minghu6")
         (about: "Bare Language Compiler")

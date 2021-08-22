@@ -172,7 +172,7 @@ macro_rules! lexdfamap {
 }
 
 #[macro_export]
-macro_rules! token_analyzer {
+macro_rules! token_recognizer {
     ( $($token_name:ident => $patstr:literal),* ) => {
         {
             let mut _vec = vec![];

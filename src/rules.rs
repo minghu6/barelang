@@ -1,8 +1,10 @@
 //! Specific grammar rules for barelang
 
+use indexmap::{IndexMap, indexmap};
 use lazy_static::lazy_static;
 
 use crate::*;
+use crate::badata::BaBOp;
 use crate::gram::Gram;
 use crate::lexer::{
     CharMatcher, RegexCharMatcher, SimpleCharMatcher,
@@ -19,7 +21,7 @@ make_char_matcher_rules! {
     delimiter   => "[,|;]"           | r,
     num         => "[[:digit:]]"     | r,
     numsign     => "[+|-]"           | r,
-    op          => r#"[\+|-|\*|/|%|\^|\||&|~|!|?|:|@|>|=|<|\.]"# | r,
+    op          => r#"[\+|\-|\*|/|%|\^|\||&|~|!|?|:|@|>|=|<|\.]"# | r,
     any         => r#"[\d\D]"#       | r,
     ng          => r#"[^[:graph:]]"# | r,
     sp          => r#"[[:space:]]"#  | r,
@@ -251,7 +253,7 @@ pub fn barelang_lexdfamap() -> LexDFAMapType {
 //// Tokenizer-1 (Recognize)
 
 pub fn barelang_token_matcher_vec() -> TokenMatcherVec {
-    token_analyzer! {
+    token_recognizer! {
         id     => "^[[:alpha:]_][[:alnum:]_]*$",
         splid  => "^[[:alpha:]_][[:alnum:]_]*#$",
         intlit => r"^[+|-]?(([0-9]+)|(0x[0-9a-f]+))$",
@@ -268,7 +270,8 @@ pub fn barelang_token_matcher_vec() -> TokenMatcherVec {
         semi   => r"^;$",
         dot    => r"^\.$",
         comma  => r",",
-        eq     => r"="
+        eq     => r"=",
+        percent=> r"%"
     }
 }
 
@@ -312,7 +315,8 @@ pub fn barelang_gram() -> Gram {
         semi,
         dot,
         comma,
-        eq
+        eq,
+        percent  // %
     };
 
 
@@ -349,8 +353,7 @@ pub fn barelang_gram() -> Gram {
         | Expr;
 
         Expr1:
-        | dot FunCall Expr1;
-        | BOp Pri Expr1;
+        | BOp Pri Expr1;  // 中缀表达式仅限基本操作符, 这是为了方便起见
         | ε;
 
         FunCall:
@@ -366,6 +369,8 @@ pub fn barelang_gram() -> Gram {
         | sub;
         | mul;
         | div;
+        | percent;
+        | dot;
 
         Pri:
         | Lit;
@@ -383,6 +388,17 @@ pub fn barelang_gram() -> Gram {
     barelang
 }
 
+/// Binary Operator Precedence Map
+pub fn bopprecmap() -> IndexMap<BaBOp, usize> {
+    indexmap! {
+        BaBOp::Add => 90,
+        BaBOp::Sub => 90,
+
+        BaBOp::Mul => 100,
+        BaBOp::Div => 100,
+        BaBOp::Mod => 100
+    }
+}
 
 #[cfg(test)]
 mod test {

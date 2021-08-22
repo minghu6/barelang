@@ -1,17 +1,17 @@
 //! Semantic Analyzer: translates synax tree into annotation tree manually.
 
-use indexmap::indexmap;
-use itertools::Itertools;
+use indexmap::{IndexMap, indexmap};
+use itertools::{Itertools};
+use lazy_static::lazy_static;
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::{
-    baredata::*,
-    syntax_parser::{ASTNode, AST},
-};
+use crate::{badata::*, rules::bopprecmap, stack, syntax_parser::{ASTNode, AST}, utils::Stack};
 
-
+lazy_static! {
+    pub static ref BOP_PREC_MAP: IndexMap<BaBOp, usize> = bopprecmap();
+}
 
 pub fn analyze_semantic(ast: Rc<RefCell<AST>>) -> Vec<StackFrame> {
     let mut ml = analyze_ast(&ast);
@@ -92,7 +92,6 @@ fn analyze_stmt(ast_node: &ASTNode) -> BaStmt {
     let mut elems_iter = ast_ref.elems_vec().into_iter();
     let (fstsym, fstelem) = elems_iter.next().unwrap();
 
-    println!("analyze stmt {}", ast_ref);
     match fstsym.to_string().as_str() {
         "[Expr]" => BaStmt::Expr(analyze_expr(fstelem)),
         "<semi>" => BaStmt::Empty,
@@ -107,9 +106,61 @@ fn analyze_expr(ast_node: &ASTNode) -> BaExpr {
 
     match fstsym.to_string().as_str() {
         "[Pri]" => {
-            let pri = analyze_pri(fstelem);
-            BaExpr::Pri(pri)
-            // ignore parse Expr1
+            let fstpri = analyze_pri(fstelem);
+
+            // Binary Operator Precedence Parsing
+            if let Some((_sndsym, sndelem)) = elems_iter.next() {
+                let (mut out_bop_stack, mut out_pri_stack)
+                = analyze_expr1(sndelem);
+
+                let mut staging_bop_stack: Stack<BaBOp> = stack![];
+                let mut comppritn_stack = stack![BaCompPriTN::Leaf(fstpri)];
+
+                // println!("tokstack: {:?}", tokstack);
+
+                // out_bop_stack would be same with out_pri_stack in size.
+                while !(out_bop_stack.is_empty() && staging_bop_stack.is_empty()) {
+                    if out_bop_stack.is_empty() {
+                        println!("when out is empty {:?}", staging_bop_stack)
+                    }
+
+                    // Reduce
+                    if out_bop_stack.is_empty()
+                        || !staging_bop_stack.is_empty()
+                            && staging_bop_stack.peek().unwrap().precedence()
+                                // >= for left associative operator
+                                >= out_bop_stack.peek().unwrap().precedence()
+                    {
+                        let bop = staging_bop_stack.pop().unwrap();
+                        let rhnode = comppritn_stack.pop().unwrap();
+                        let lfnode = comppritn_stack.pop().unwrap();
+
+                        comppritn_stack.push(
+                            BaCompPriTN::Tree(
+                                BaCompPriT {
+                                    bop,
+                                    left: Rc::new(lfnode),
+                                    right: Rc::new(rhnode)
+                                }
+                            )
+                        )
+                    }
+                    // Shift
+                    else {
+                        staging_bop_stack.push(out_bop_stack.pop().unwrap());
+                        comppritn_stack.push(
+                            BaCompPriTN::Leaf(
+                                    out_pri_stack.pop().unwrap()
+                            )
+                        );
+                    }
+                }
+
+                BaExpr::CompPri(comppritn_stack.pop().unwrap())
+            }
+            else {
+                BaExpr::Pri(fstpri)
+            }
         },
         "[FunCall]" => BaExpr::FunCall(
             analyze_fun_call(fstelem)
@@ -134,8 +185,37 @@ fn analyze_pri(ast_node: &ASTNode) -> BaPri {
     }
 }
 
-#[allow(unused)]
-fn analyze_expr1(_ast_node: &ASTNode) {}
+/// Output: Production Queue
+fn analyze_expr1(ast_node: &ASTNode) -> (Stack<BaBOp>, Stack<BaPri>) {
+    let ast_ref = ast_node.get_ast().unwrap().as_ref().borrow();
+    let mut elems_iter = ast_ref.elems_vec().into_iter();
+
+    let bop = analyze_bop(elems_iter.next().unwrap().1);
+    let pri = analyze_pri(elems_iter.next().unwrap().1);
+
+    if let Some((_thirdsym, thirdelem)) = elems_iter.next() {
+        let (mut bopstack, mut pristack)
+         = analyze_expr1(thirdelem);
+        bopstack.push(bop);
+        pristack.push(pri);
+
+        (bopstack, pristack)
+    }
+    else {
+        (stack![bop], stack![pri])
+    }
+}
+
+
+fn analyze_bop(ast_node: &ASTNode) -> BaBOp {
+    let ast_ref = ast_node.get_ast().unwrap().as_ref().borrow();
+    let mut elems_iter = ast_ref.elems_vec().into_iter();
+    let (_fstsym, fstelem) = elems_iter.next().unwrap();
+
+    let tok = fstelem.get_token().unwrap();
+
+    BaBOp::from(tok.as_ref())
+}
 
 fn analyze_fun_call(ast_node: &ASTNode) -> BaFunCall {
     let ast_ref = ast_node.get_ast().unwrap().as_ref().borrow();

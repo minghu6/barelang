@@ -2,14 +2,19 @@
 
 // atom data [] list, 2 factor map list, homomorphism
 // int is usize/isize as default, fixed,
+// a', a'', a'''
+// a1 a2 a3
 
 t0 = 5;
+// t1 = 1 + 4 * 3 / 2 - 6;
+t2 = 1 * 2 * 3 + 4 % 2;
+t3=1+2-3;
 
 rs#printi(t0);
-rs#printi(55);
-rs#printi(66);
-rs#printi(77);
-rs#printi(88);
+//rs#printi(55);
+//rs#printi(66);
+//rs#printi(77);
+//rs#printi(88);
 
 
 // t1 = [1 2 3 4];
