@@ -51,6 +51,7 @@ pub enum BaSplId {
 pub enum BaPri {
     Val(BaVal),
     Id(Rc<RefCell<BaId>>),
+    Expr(Rc<RefCell<BaExpr>>)
 }
 
 #[derive(Debug)]

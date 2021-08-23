@@ -14,7 +14,6 @@ pub mod lexer;
 pub mod syntax_parser;
 pub mod semantic_analyzer;
 pub mod badata;
-pub mod compiler;
 pub mod codegen;
 pub mod rslib;
 pub mod utils;

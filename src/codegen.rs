@@ -266,6 +266,7 @@ fn codegen_args<'a>(context: &'a Context, funcall: &BaFunCall) -> Vec<BasicValue
                             _ => {}
                         }
                     },
+                    BaPri::Expr(_expr_rc) => {}
                     //_ => {}
                 }
             },
@@ -276,3 +277,12 @@ fn codegen_args<'a>(context: &'a Context, funcall: &BaFunCall) -> Vec<BasicValue
     args_vec
 }
 
+
+#[cfg(test)]
+mod test {
+    #[test]
+    fn test_algb_op() {
+        println!("{}", 1f64+(3.0/2.0) -2f64);
+    }
+
+}

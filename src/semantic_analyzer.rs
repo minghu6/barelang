@@ -116,14 +116,8 @@ fn analyze_expr(ast_node: &ASTNode) -> BaExpr {
                 let mut staging_bop_stack: Stack<BaBOp> = stack![];
                 let mut comppritn_stack = stack![BaCompPriTN::Leaf(fstpri)];
 
-                // println!("tokstack: {:?}", tokstack);
-
                 // out_bop_stack would be same with out_pri_stack in size.
                 while !(out_bop_stack.is_empty() && staging_bop_stack.is_empty()) {
-                    if out_bop_stack.is_empty() {
-                        println!("when out is empty {:?}", staging_bop_stack)
-                    }
-
                     // Reduce
                     if out_bop_stack.is_empty()
                         || !staging_bop_stack.is_empty()
@@ -180,6 +174,11 @@ fn analyze_pri(ast_node: &ASTNode) -> BaPri {
         "[Lit]" => BaPri::Val(analyze_lit(fstelem)),
         "[Id]" => BaPri::Id(
             Rc::new(RefCell::new(analyze_id(fstelem)))
+        ),
+        "<paren>" => BaPri::Expr(
+            Rc::new(RefCell::new(analyze_expr(
+                &elems_iter.next().unwrap().1
+            )))
         ),
         _ => unreachable!(),
     }
