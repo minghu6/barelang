@@ -1,3 +1,14 @@
+## BareLang
+
+舍弃一些东西, 来寻求简洁和某种程度的形式与内在的统一.
+
+## Dependencies
+
+1. LLVM-12
+
+1. Rust nightly (need std)
+
+
 ## Compile
 
 

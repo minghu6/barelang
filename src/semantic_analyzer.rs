@@ -1,13 +1,21 @@
 //! Semantic Analyzer: translates synax tree into annotation tree manually.
 
-use indexmap::{IndexMap, indexmap};
-use itertools::{Itertools};
+use indexmap::{indexmap, IndexMap};
+use itertools::Itertools;
 use lazy_static::lazy_static;
+use uuid::Uuid;
 
-use std::cell::RefCell;
 use std::rc::Rc;
+use std::{cell::RefCell};
 
-use crate::{badata::*, rules::bopprecmap, stack, syntax_parser::{ASTNode, AST}, utils::Stack};
+use crate::utils::gen_counter;
+use crate::{
+    badata::*,
+    rules::bopprecmap,
+    stack,
+    syntax_parser::{ASTNode, AST},
+    utils::{CounterType, Stack},
+};
 
 lazy_static! {
     pub static ref BOP_PREC_MAP: IndexMap<BaBOp, usize> = bopprecmap();
@@ -16,7 +24,7 @@ lazy_static! {
 pub fn analyze_semantic(ast: Rc<RefCell<AST>>) -> Vec<StackFrame> {
     let mut ml = analyze_ast(&ast);
 
-    flatten_expr(&mut ml);
+    refactor_ml_flatten_expr(&mut ml);
 
     // build stack frame vector
     let mut frames = build_stack_frames(ml);
@@ -27,19 +35,15 @@ pub fn analyze_semantic(ast: Rc<RefCell<AST>>) -> Vec<StackFrame> {
     frames
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 //// Bare Lang semantics analyze step 0:- Create Annotated Tree
 
 fn analyze_ast(ast: &Rc<RefCell<AST>>) -> ModuleLisp {
     let ast_ref = ast.as_ref().borrow();
-    let (fstsym, fstnode)
-    = ast_ref.elems_vec().into_iter().next().unwrap();
+    let (fstsym, fstnode) = ast_ref.elems_vec().into_iter().next().unwrap();
 
     match fstsym.to_string().as_str() {
-        "[BlockStmts]" => ModuleLisp::BlockStmts(
-            analyze_block_stmts(fstnode)
-        ),
+        "[BlockStmts]" => ModuleLisp::BlockStmts(analyze_block_stmts(fstnode)),
         //"Block" => analyze_block(ast_node),
         _ => {
             unreachable!()
@@ -54,9 +58,7 @@ fn analyze_block_stmts(ast_node: &ASTNode) -> Vec<BaBlockStmtRef> {
 
     let mut stmts = vec![];
 
-    stmts.push(
-        BaBlockStmtRef::new(analyze_block_stmt(fstelem))
-    );
+    stmts.push(BaBlockStmtRef::new(analyze_block_stmt(fstelem)));
 
     if let Some(sndres) = elems_iter.next() {
         // recur
@@ -72,13 +74,9 @@ fn analyze_block_stmt(ast_node: &ASTNode) -> BaBlockStmt {
     let (fstsym, fstelem) = elems_iter.next().unwrap();
 
     match fstsym.to_string().as_str() {
-        "[Stmt]" => {
-            BaBlockStmt::Stmt(analyze_stmt(fstelem))
-        },
-        "[VariableDeclarator]" => BaBlockStmt::Declare(
-            analyze_variable_declarator(fstelem)
-        ),
-        _ => unreachable!()
+        "[Stmt]" => BaBlockStmt::Stmt(analyze_stmt(fstelem)),
+        "[VariableDeclarator]" => BaBlockStmt::Declare(analyze_variable_declarator(fstelem)),
+        _ => unreachable!(),
     }
 }
 
@@ -95,7 +93,7 @@ fn analyze_stmt(ast_node: &ASTNode) -> BaStmt {
     match fstsym.to_string().as_str() {
         "[Expr]" => BaStmt::Expr(analyze_expr(fstelem)),
         "<semi>" => BaStmt::Empty,
-        _ => unreachable!()
+        _ => unreachable!(),
     }
 }
 
@@ -110,11 +108,11 @@ fn analyze_expr(ast_node: &ASTNode) -> BaExpr {
 
             // Binary Operator Precedence Parsing
             if let Some((_sndsym, sndelem)) = elems_iter.next() {
-                let (mut out_bop_stack, mut out_pri_stack)
-                = analyze_expr1(sndelem);
+                let (mut out_bop_stack, mut out_pri_stack) = analyze_expr1(sndelem);
 
                 let mut staging_bop_stack: Stack<BaBOp> = stack![];
-                let mut comppritn_stack = stack![BaCompPriTN::Leaf(fstpri)];
+                let mut comppritn_stack
+                = stack![BaCompPriTN::Leaf(Rc::new(RefCell::new(fstpri)))];
 
                 // out_bop_stack would be same with out_pri_stack in size.
                 while !(out_bop_stack.is_empty() && staging_bop_stack.is_empty()) {
@@ -129,36 +127,27 @@ fn analyze_expr(ast_node: &ASTNode) -> BaExpr {
                         let rhnode = comppritn_stack.pop().unwrap();
                         let lfnode = comppritn_stack.pop().unwrap();
 
-                        comppritn_stack.push(
-                            BaCompPriTN::Tree(
-                                BaCompPriT {
-                                    bop,
-                                    left: Rc::new(lfnode),
-                                    right: Rc::new(rhnode)
-                                }
-                            )
-                        )
+                        comppritn_stack.push(BaCompPriTN::Tree(Rc::new(RefCell::new(BaCompPriT {
+                            bop,
+                            lf: lfnode,
+                            rh: rhnode,
+                        }))));
                     }
                     // Shift
                     else {
                         staging_bop_stack.push(out_bop_stack.pop().unwrap());
-                        comppritn_stack.push(
-                            BaCompPriTN::Leaf(
-                                    out_pri_stack.pop().unwrap()
-                            )
-                        );
+                        comppritn_stack.push(BaCompPriTN::Leaf(
+                            Rc::new(RefCell::new(out_pri_stack.pop().unwrap()))
+                        ));
                     }
                 }
 
                 BaExpr::CompPri(comppritn_stack.pop().unwrap())
-            }
-            else {
+            } else {
                 BaExpr::Pri(fstpri)
             }
-        },
-        "[FunCall]" => BaExpr::FunCall(
-            analyze_fun_call(fstelem)
-        ),
+        }
+        "[FunCall]" => BaExpr::FunCall(analyze_fun_call(fstelem)),
         _ => unreachable!(),
     }
 }
@@ -172,14 +161,10 @@ fn analyze_pri(ast_node: &ASTNode) -> BaPri {
 
     match fstsym.to_string().as_str() {
         "[Lit]" => BaPri::Val(analyze_lit(fstelem)),
-        "[Id]" => BaPri::Id(
-            Rc::new(RefCell::new(analyze_id(fstelem)))
-        ),
-        "<paren>" => BaPri::Expr(
-            Rc::new(RefCell::new(analyze_expr(
-                &elems_iter.next().unwrap().1
-            )))
-        ),
+        "[Id]" => BaPri::Id(Rc::new(RefCell::new(analyze_id(fstelem)))),
+        "<paren>" => BaPri::Expr(Rc::new(RefCell::new(analyze_expr(
+            &elems_iter.next().unwrap().1,
+        )))),
         _ => unreachable!(),
     }
 }
@@ -193,18 +178,15 @@ fn analyze_expr1(ast_node: &ASTNode) -> (Stack<BaBOp>, Stack<BaPri>) {
     let pri = analyze_pri(&elems_iter.next().unwrap().1);
 
     if let Some((_thirdsym, thirdelem)) = elems_iter.next() {
-        let (mut bopstack, mut pristack)
-         = analyze_expr1(thirdelem);
+        let (mut bopstack, mut pristack) = analyze_expr1(thirdelem);
         bopstack.push(bop);
         pristack.push(pri);
 
         (bopstack, pristack)
-    }
-    else {
+    } else {
         (stack![bop], stack![pri])
     }
 }
-
 
 fn analyze_bop(ast_node: &ASTNode) -> BaBOp {
     let ast_ref = ast_node.get_ast().unwrap().as_ref().borrow();
@@ -224,14 +206,13 @@ fn analyze_fun_call(ast_node: &ASTNode) -> BaFunCall {
     let (_fstsym, fstelem) = elems_iter.next().unwrap();
     let funid = analyze_id(fstelem);
 
-
-    elems_iter.next().unwrap();  //skip left paren
+    elems_iter.next().unwrap(); //skip left paren
     let (_third_sym, third_elem) = elems_iter.next().unwrap();
     let expr_list = analyze_expr_list(third_elem);
 
     BaFunCall {
         name: funid,
-        args: expr_list
+        args: expr_list,
     }
 }
 
@@ -250,7 +231,7 @@ fn analyze_variable_declarator(ast_node: &ASTNode) -> BaId {
     BaId {
         name,
         value: BaVal::Expr(Rc::new(expr)),
-        splid: None
+        splid: None,
     }
 }
 
@@ -271,9 +252,7 @@ fn analyze_expr_list(ast_node: &ASTNode) -> Vec<BaExpr> {
 
     let mut exprs = vec![];
 
-    exprs.push(
-        analyze_expr(fstelem)
-    );
+    exprs.push(analyze_expr(fstelem));
 
     if let Some(_comma_pair) = elems_iter.next() {
         // recur
@@ -294,7 +273,7 @@ fn analyze_id(ast_node: &ASTNode) -> BaId {
         "<id>" => BaId {
             splid: None,
             name: analyze_t_id(fstelem),
-            value: BaVal::Unresolved
+            value: BaVal::Unresolved,
         },
         "<splid>" => {
             let splid = analyze_t_splid(fstelem);
@@ -302,7 +281,7 @@ fn analyze_id(ast_node: &ASTNode) -> BaId {
             BaId {
                 splid: Some(splid),
                 name: t_id,
-                value: BaVal::Unresolved
+                value: BaVal::Unresolved,
             }
         }
         _ => unreachable!(),
@@ -318,7 +297,7 @@ fn analyze_lit(ast_node: &ASTNode) -> BaVal {
 
     match fstsym.to_string().as_str() {
         "<intlit>" => analyze_t_intlit(fstelem),
-        _ => unreachable!()
+        _ => unreachable!(),
     }
 }
 
@@ -331,7 +310,7 @@ fn analyze_t_splid(ast_node: &ASTNode) -> BaSplId {
 
     match tokv {
         "rs#" => BaSplId::RS,
-        _ => unreachable!()
+        _ => unreachable!(),
     }
 }
 
@@ -344,68 +323,129 @@ fn analyze_t_intlit(ast_node: &ASTNode) -> BaVal {
     if tokv.contains("0x") {
         if tokv.starts_with("-") {
             tokv = tokv.trim_start_matches("-");
-        }
-        else if tokv.starts_with("+") {
+        } else if tokv.starts_with("+") {
             tokv = tokv.trim_start_matches("+");
         }
 
         tokv = tokv.trim_start_matches("0x");
 
         if is_neg {
-            BaVal::Num(BaNum::ISize(
-                -isize::from_str_radix(tokv,16).unwrap()
-            ))
+            BaVal::Num(BaNum::ISize(-isize::from_str_radix(tokv, 16).unwrap()))
+        } else {
+            BaVal::Num(BaNum::USize(usize::from_str_radix(tokv, 16).unwrap()))
         }
-        else {
-            BaVal::Num(BaNum::USize(
-                usize::from_str_radix(tokv,16).unwrap()
-            ))
-        }
-    }
-    else {
+    } else {
         if tokv.starts_with("-") {
-            BaVal::Num(BaNum::ISize(
-                tokv.parse::<isize>().unwrap()
-            ))
-        }
-        else {
-            BaVal::Num(BaNum::USize(
-                tokv.parse::<usize>().unwrap()
-            ))
+            BaVal::Num(BaNum::ISize(tokv.parse::<isize>().unwrap()))
+        } else {
+            BaVal::Num(BaNum::USize(tokv.parse::<usize>().unwrap()))
         }
     }
 }
 
-
 ////////////////////////////////////////////////////////////////////////////////
 //// Bare Lang semantics analyze :- Expr expand
 //// Transfer BaVal::Expr => BaVal::BaPri
-fn flatten_expr(ml: &mut ModuleLisp) {
+
+fn refactor_ml_flatten_expr(ml: &mut ModuleLisp) {
     match ml {
         ModuleLisp::BlockStmts(blkstmtref_vec) => {
-            for blkstmtref in blkstmtref_vec.iter() {
+            let mut i = 0usize;
+            let mut lastpos = blkstmtref_vec.len() - 1;
+
+            while i <= lastpos {
+                let blkstmtref = blkstmtref_vec[i].clone();
+
                 match &mut *blkstmtref.block_stmt_ref_mut() {
-                    BaBlockStmt::Declare(baid) => {
-                        match &mut baid.value {
-                            BaVal::Expr(expr) => {
-                                match expr.as_ref() {
-                                    BaExpr::Pri(pri) => {
-                                        match pri {
-                                            BaPri::Val(val) => {
-                                                baid.value = val.clone();
-                                            },
-                                            _ => {}
-                                        }
-                                    },
-                                    _ => {}
+                    BaBlockStmt::Declare(baid) => match &mut baid.value {
+                        BaVal::Expr(expr) => match expr.as_ref() {
+                            BaExpr::Pri(pri) => match pri {
+                                BaPri::Val(val) => {
+                                    baid.value = val.clone();
                                 }
+                                _ => {}
                             },
+                            BaExpr::CompPri(pritn) => {
+                                let (mut new_blkstmtref_vec, pri)
+                                = unfold_expr(pritn);
+
+                                let inc = new_blkstmtref_vec.len() - 1;
+
+                                blkstmtref_vec.remove(i);
+                                while let Some(new_blkstmtref) = new_blkstmtref_vec.pop() {
+                                    blkstmtref_vec.insert(i, new_blkstmtref);
+                                }
+
+                                baid.value = BaVal::Expr(
+                                    Rc::new(BaExpr::Pri(
+                                        pri
+                                    )));
+
+                                lastpos += inc;
+                                i += inc;
+
+                            }
                             _ => {}
-                        }
+                        },
+                        _ => {}
                     },
                     _ => {}
                 }
+
+                i += 1;
             }
+        }
+    }
+}
+
+fn unfold_expr(pritn: &BaCompPriTN) -> (Vec<BaBlockStmtRef>, BaPri) {
+    let mut gensym_ser = gen_gensym_ser("tmp", gen_counter());
+
+    _unfold_expr(pritn, &mut gensym_ser)
+}
+
+fn _unfold_expr(pritn: &BaCompPriTN, gensym_ser: &mut SymGen) -> (Vec<BaBlockStmtRef>, BaPri) {
+    match pritn {
+        BaCompPriTN::Tree(tree_rc) => {
+            let tree_ref = tree_rc.as_ref().borrow();
+
+            let (mut lf_res, lf_pri_rc)
+            = _unfold_expr(&tree_ref.lf, gensym_ser);
+
+            let (rh_res, rh_pri_rc)
+            = _unfold_expr(&tree_ref.rh, gensym_ser);
+
+            /* build declare expression */
+            let tmpid = gensym_ser();
+            let value = BaVal::Expr(Rc::new(BaExpr::TwoPri(
+                tree_ref.bop.clone(),
+                lf_pri_rc,
+                rh_pri_rc,
+            )));
+            let blkstmtref
+            = BaBlockStmtRef::new(BaBlockStmt::Declare(BaId {
+                name: tmpid.clone(),
+                splid: None,
+                value,
+            }));
+
+            lf_res.extend(rh_res.into_iter());
+            lf_res.push(blkstmtref);
+
+            let pri_rc = BaPri::Id(
+                Rc::new(RefCell::new(
+                    BaId {
+                        name: tmpid.clone(),
+                        splid: None,
+                        value: BaVal::Unresolved,
+                    }
+                ))
+            );
+
+            (lf_res, pri_rc)
+        },
+        BaCompPriTN::Leaf(pri_rc) => {
+            (vec![], pri_rc.as_ref().borrow().clone())
         }
     }
 }
@@ -418,36 +458,35 @@ fn build_stack_frames(ml: ModuleLisp) -> Vec<StackFrame> {
 
     match ml {
         ModuleLisp::BlockStmts(blkstmtref_vec) => {
-            let mut syms_map = indexmap!{};
+            let mut syms_map = indexmap! {};
 
             for blkstmtref in blkstmtref_vec.iter() {
                 match &*blkstmtref.block_stmt_ref() {
                     BaBlockStmt::Declare(baid) => {
-                        syms_map.insert(
-                            baid.name.clone(),
-                            baid.clone()
-                        );
-                    },
+                        syms_map.insert(baid.name.clone(), baid.clone());
+                    }
                     _ => {}
                 }
             }
 
-            frames.push(
-            StackFrame::new(
+            frames.push(StackFrame::new(
                 syms_map,
                 blkstmtref_vec
-                .into_iter()
-                .filter(|blkstmtref| {
-                    if let BaBlockStmt::Stmt(stmt) = &*blkstmtref.block_stmt_ref() {
-                        if let BaStmt::Empty = stmt { false } else { true }
-                    }
-                    else {
-                        true
-                    }
-                })
-                .collect_vec(),
+                    .into_iter()
+                    .filter(|blkstmtref| {
+                        if let BaBlockStmt::Stmt(stmt) = &*blkstmtref.block_stmt_ref() {
+                            if let BaStmt::Empty = stmt {
+                                false
+                            } else {
+                                true
+                            }
+                        } else {
+                            true
+                        }
+                    })
+                    .collect_vec(),
                 None,
-                vec![]
+                vec![],
             ));
         }
     }
@@ -455,44 +494,38 @@ fn build_stack_frames(ml: ModuleLisp) -> Vec<StackFrame> {
     frames
 }
 
-
 fn resolve_ref(frames: &mut Vec<StackFrame>) {
     for frame in frames.iter_mut() {
         for blkstmtref in frame.frame_ref().blockstmts.iter() {
             match &*blkstmtref.block_stmt_ref() {
-                BaBlockStmt::Stmt(stmt) => {
-                    match stmt {
-                        BaStmt::Expr(expr) => {
-                            match expr {
-                                BaExpr::FunCall(funcall) => {
-                                    for arg in funcall.args.iter() {
-                                        match arg {
-                                            BaExpr::Pri(pri) => {
-                                                match pri {
-                                                    BaPri::Id(idrc) => {
-                                                        let mut idref = idrc.as_ref().borrow_mut();
+                BaBlockStmt::Stmt(stmt) => match stmt {
+                    BaStmt::Expr(expr) => match expr {
+                        BaExpr::FunCall(funcall) => {
+                            for arg in funcall.args.iter() {
+                                match arg {
+                                    BaExpr::Pri(pri) => match pri {
+                                        BaPri::Id(idrc) => {
+                                            let mut idref = idrc.as_ref().borrow_mut();
 
-                                                        match idref.value {
-                                                            BaVal::Unresolved => {
-                                                                if let Some(idres) = frame.get_sym(&idref.name) {
-                                                                    idref.value = idres.value
-                                                                }
-                                                            },
-                                                            _ => {}
-                                                        }
-                                                    },
-                                                    _ => {}
+                                            match idref.value {
+                                                BaVal::Unresolved => {
+                                                    if let Some(idres) = frame.get_sym(&idref.name)
+                                                    {
+                                                        idref.value = idres.value
+                                                    }
                                                 }
-                                            },
-                                            _ => {}
+                                                _ => {}
+                                            }
                                         }
-                                    }
-                                },
-                                _ => {}
+                                        _ => {}
+                                    },
+                                    _ => {}
+                                }
                             }
-                        },
-                        BaStmt::Empty => {}
-                    }
+                        }
+                        _ => {}
+                    },
+                    BaStmt::Empty => {}
                 },
                 _ => {}
             }
@@ -500,7 +533,20 @@ fn resolve_ref(frames: &mut Vec<StackFrame>) {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+//// Helper Functions
 
+pub fn gensym_rand() -> String {
+    format!("__{}", Uuid::new_v4().to_simple())
+}
+
+pub type SymGen = impl FnMut() -> String;
+
+pub fn gen_gensym_ser(base: &str, mut counter: CounterType) -> SymGen {
+    let base = base.to_string();
+
+    move || format!("{}_{}_{}", base, counter(), gensym_rand())
+}
 
 #[cfg(test)]
 mod test {
@@ -510,25 +556,16 @@ mod test {
     fn test_rust_parse() {
         assert_eq!("-1234".parse::<isize>().unwrap(), -1234);
         assert_eq!(
-            -isize::from_str_radix(
-                "-0x1234".trim_start_matches("-0x"),
-                16
-            ).unwrap(),
+            -isize::from_str_radix("-0x1234".trim_start_matches("-0x"), 16).unwrap(),
             -0x1234
         );
         assert_eq!(
-            -isize::from_str_radix(
-                "-0xabcd".trim_start_matches("-0x"),
-                16
-            ).unwrap(),
+            -isize::from_str_radix("-0xabcd".trim_start_matches("-0x"), 16).unwrap(),
             -0xabcd
         );
         assert_ne!(
-            -isize::from_str_radix(
-                "-abcd",
-                16
-            ).unwrap(),
-            -0xabcd  // actual result is `0xabcd`, sign has been ignored.
+            -isize::from_str_radix("-abcd", 16).unwrap(),
+            -0xabcd // actual result is `0xabcd`, sign has been ignored.
         );
     }
 
@@ -536,13 +573,12 @@ mod test {
     fn test_semantics_analyze() {
         use std::fs;
 
-        use crate::syntax_parser::{ PARSER, Parser };
+        use crate::syntax_parser::{Parser, PARSER};
 
         let data0 = fs::read_to_string("./examples/exp0.ba").expect("Unable to read file");
 
         match (*PARSER).parse(&data0) {
             Ok(res) => {
-
                 println!("{}", res.as_ref().borrow());
 
                 let ml = analyze_ast(&res);
@@ -553,12 +589,25 @@ mod test {
                 resolve_ref(&mut frames);
 
                 println!("{:#?}", frames);
-
-            },
+            }
             Err(msg) => {
                 eprintln!("{}", msg);
             }
         }
+    }
 
+    #[test]
+    fn test_gensym() {
+        use super::{gen_gensym_ser, gensym_rand};
+        use crate::utils::gen_counter;
+
+        println!("randsym: {}", gensym_rand());
+        println!("randsym: {}", gensym_rand());
+
+        let counter = gen_counter();
+        let mut symgen = gen_gensym_ser("t", counter);
+
+        println!("sersym: {}", symgen());
+        println!("sersym: {}", symgen());
     }
 }

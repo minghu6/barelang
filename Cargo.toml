@@ -10,6 +10,7 @@ itertools = "0.10.*"
 regex = "1"
 lazy_static = "1.4.0"
 clap = "2.33.3"
+uuid = { version = "0.8", features = ["v4"] }
 
 [dependencies.proc_macros]
 package = "bare-proc-macros"

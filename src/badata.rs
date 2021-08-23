@@ -38,8 +38,9 @@ pub enum BaVal {
 #[derive(Debug, Clone)]
 pub struct BaId {
     pub name: String,
-    pub value: BaVal,
     pub splid: Option<BaSplId>,
+
+    pub value: BaVal,
 }
 
 #[derive(Debug, Clone)]
@@ -61,6 +62,7 @@ pub enum BaExpr {
 
     // Pri is just a special case of CompPri, We do for flatten structure
     CompPri(BaCompPriTN),
+    TwoPri(BaBOp, BaPri, BaPri)
 }
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
@@ -92,21 +94,48 @@ impl BaBOp {
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum BaCompPriTN {
-    Tree(BaCompPriT),
-    Leaf(BaPri)
+    Tree(Rc<RefCell<BaCompPriT>>),
+    Leaf(Rc<RefCell<BaPri>>)
 }
 
 impl BaCompPriTN {
+    pub fn is_tree(&self) -> bool {
+        match self {
+            &Self::Tree(_) => true,
+            _ => false
+        }
+    }
 
+    pub fn is_leaf(&self) -> bool {
+        match self {
+            &Self::Leaf(_) => true,
+            _ => false
+        }
+    }
+
+    pub fn as_leaf(&self) -> Option<&Rc<RefCell<BaPri>>> {
+        match self {
+            Self::Leaf(leaf) => Some(leaf),
+            _ => None
+        }
+    }
+
+    pub fn as_tree(&self) -> Option<&Rc<RefCell<BaCompPriT>>> {
+        match self {
+            Self::Tree(tree) => Some(tree),
+            _ => None
+        }
+    }
 }
+
 
 #[derive(Debug)]
 pub struct BaCompPriT {
     pub bop: BaBOp,
-    pub left: Rc<BaCompPriTN>,
-    pub right: Rc<BaCompPriTN>
+    pub lf: BaCompPriTN,
+    pub rh: BaCompPriTN
 }
 
 
@@ -128,7 +157,7 @@ pub enum BaBlockStmt {
     Declare(BaId),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BaBlockStmtRef(Rc<RefCell<BaBlockStmt>>);
 
 impl BaBlockStmtRef {
