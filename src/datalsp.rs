@@ -1,4 +1,4 @@
-//! Bare Lang Data
+//! Syntax Data (Recursive)
 #![allow(unused_imports)]
 
 use std::{
@@ -10,97 +10,74 @@ use std::{
 };
 
 use indexmap::IndexMap;
-use inkwell::{context::Context, types::FunctionType};
 
-use crate::{error::BaCErr, utils::Stack};
+use crate::{datair::BaId, error::BaCErr, utils::Stack};
 use crate::lexer::Token;
 use crate::semantic_analyzer::BOP_PREC_MAP;
-
+use crate::datair::{
+    BaLit, BaSplId, BaBOp
+};
 ////////////////////////////////////////////////////////////////////////////////
 //// Bare Language Data Structure
 
-#[derive(Debug, Clone)]
-pub enum BaNum {
-    USize(usize),
-    ISize(isize),
-    I64(i64),
-    U8(u8),
-    Float(f64), // 64 bit float
-}
 
 #[derive(Debug, Clone)]
-pub enum BaVal {
-    Num(BaNum),
-    Expr(Rc<BaExpr>),
+pub enum LspVal {
+    Lit(BaLit),
+    Expr(Rc<LspExpr>),
     Unresolved,
 }
 
 #[derive(Debug, Clone)]
-pub struct BaId {
+pub struct LspId {
     pub name: String,
     pub splid: Option<BaSplId>,
 
-    pub value: BaVal,
+    pub value: LspVal,
 }
 
-#[derive(Debug, Clone)]
-pub enum BaSplId {
-    RS,
-}
-
-#[derive(Debug, Clone)]
-pub enum BaPri {
-    Val(BaVal),
-    Id(Rc<RefCell<BaId>>),
-    Expr(Rc<RefCell<BaExpr>>)
-}
-
-#[derive(Debug)]
-pub enum BaExpr {
-    Pri(BaPri),
-    FunCall(BaFunCall),
-
-    // Pri is just a special case of CompPri, We do for flatten structure
-    CompPri(BaCompPriTN),
-    TwoPri(BaBOp, BaPri, BaPri)
-}
-
-#[derive(Debug, Hash, PartialEq, Eq, Clone)]
-pub enum BaBOp {
-    Add,
-    Sub,
-    Div,
-    Mul,
-    Mod,
-}
-
-impl From<&Token> for BaBOp {
-    fn from(tok: &Token) -> Self {
-        match tok.name() {
-            "add" => BaBOp::Add,
-            "sub" => BaBOp::Sub,
-            "mul" => BaBOp::Mul,
-            "div" => BaBOp::Div,
-            "percent" => BaBOp::Mod,
-            _ => unreachable!(),
+impl LspId {
+    pub fn sym(&self) -> String {
+        if let Some(splid) = &self.splid {
+            format!("{:?}#{}", splid, self.name)
+        }
+        else {
+            self.name.clone()
         }
     }
 }
 
-impl BaBOp {
-    pub fn precedence(&self) -> usize {
-        BOP_PREC_MAP.get(self).unwrap().clone()
+impl LspId {
+    pub fn as_baid(self) -> BaId {
+        BaId::from(self)
     }
+}
+
+#[derive(Debug, Clone)]
+pub enum LspPri {
+    Val(LspVal),
+    Id(Rc<RefCell<LspId>>),
+    Expr(Rc<RefCell<LspExpr>>)
+}
+
+#[derive(Debug)]
+pub enum LspExpr {
+    Pri(LspPri),
+    FunCall(LspFunCall),
+
+    // Pri is just a special case of CompPri, We do for flatten structure
+    CompPri(LspCompPriTN),
+    TwoPri(BaBOp, LspPri, LspPri)
 }
 
 
 #[derive(Debug, Clone)]
-pub enum BaCompPriTN {
-    Tree(Rc<RefCell<BaCompPriT>>),
-    Leaf(Rc<RefCell<BaPri>>)
+pub enum LspCompPriTN {
+    Tree(Rc<RefCell<LspCompPriT>>),
+    Leaf(Rc<RefCell<LspPri>>)
 }
 
-impl BaCompPriTN {
+impl LspCompPriTN {
     pub fn is_tree(&self) -> bool {
         match self {
             &Self::Tree(_) => true,
@@ -115,14 +92,14 @@ impl BaCompPriTN {
         }
     }
 
-    pub fn as_leaf(&self) -> Option<&Rc<RefCell<BaPri>>> {
+    pub fn as_leaf(&self) -> Option<&Rc<RefCell<LspPri>>> {
         match self {
             Self::Leaf(leaf) => Some(leaf),
             _ => None
         }
     }
 
-    pub fn as_tree(&self) -> Option<&Rc<RefCell<BaCompPriT>>> {
+    pub fn as_tree(&self) -> Option<&Rc<RefCell<LspCompPriT>>> {
         match self {
             Self::Tree(tree) => Some(tree),
             _ => None
@@ -132,70 +109,61 @@ impl BaCompPriTN {
 
 
 #[derive(Debug)]
-pub struct BaCompPriT {
+pub struct LspCompPriT {
     pub bop: BaBOp,
-    pub lf: BaCompPriTN,
-    pub rh: BaCompPriTN
+    pub lf: LspCompPriTN,
+    pub rh: LspCompPriTN
 }
 
 
 #[derive(Debug)]
-pub enum BaStmt {
-    Expr(BaExpr),
+pub enum LspStmt {
+    Expr(LspExpr),
     Empty, // semi
 }
 
 #[derive(Debug)]
-pub struct BaFunCall {
+pub struct LspFunCall {
     pub name: BaId,
-    pub args: Vec<BaExpr>,
+    pub args: Vec<LspExpr>,
 }
 
 #[derive(Debug)]
-pub enum BaBlockStmt {
-    Stmt(BaStmt),
-    Declare(BaId),
+pub enum LspBlockStmt {
+    Stmt(LspStmt),
+    Declare(LspId),
 }
 
 #[derive(Debug, Clone)]
-pub struct BaBlockStmtRef(Rc<RefCell<BaBlockStmt>>);
+pub struct LspBlockStmtRef(Rc<RefCell<LspBlockStmt>>);
 
-impl BaBlockStmtRef {
-    pub fn new(bablockstmt: BaBlockStmt) -> Self {
+impl LspBlockStmtRef {
+    pub fn new(bablockstmt: LspBlockStmt) -> Self {
         Self(Rc::new(RefCell::new(bablockstmt)))
     }
 
-    pub fn block_stmt_ref(&self) -> Ref<BaBlockStmt> {
+    pub fn block_stmt_ref(&self) -> Ref<LspBlockStmt> {
         self.0.as_ref().borrow()
     }
 
-    pub fn block_stmt_ref_mut(&self) -> RefMut<BaBlockStmt> {
+    pub fn block_stmt_ref_mut(&self) -> RefMut<LspBlockStmt> {
         self.0.as_ref().borrow_mut()
     }
 }
 
 #[derive(Debug)]
 pub enum ModuleLisp {
-    BlockStmts(Vec<BaBlockStmtRef>),
+    BlockStmts(Vec<LspBlockStmtRef>),
 }
 
-pub enum ExRefType {
-    I64,
-    F64,
-}
-
-pub struct ExRefFunProto {
-    pub name: String,
-    pub funtype_getter: fn(ctx: &Context) -> FunctionType,
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Stack Frame
 
 #[derive(Debug)]
 pub struct _StackFrame {
-    pub syms: IndexMap<String, BaId>,
-    pub blockstmts: Vec<BaBlockStmtRef>,
+    pub syms: IndexMap<String, LspId>,
+    pub blockstmts: Vec<LspBlockStmtRef>,
     pub paren: Option<StackFrame>,
     pub children: Vec<StackFrame>,
 }
@@ -206,8 +174,8 @@ pub struct StackFrame(Rc<RefCell<_StackFrame>>);
 
 impl StackFrame {
     pub fn new(
-        syms: IndexMap<String, BaId>,
-        blockstmts: Vec<BaBlockStmtRef>,
+        syms: IndexMap<String, LspId>,
+        blockstmts: Vec<LspBlockStmtRef>,
         paren: Option<Self>,
         children: Vec<Self>,
     ) -> Self {
@@ -231,7 +199,7 @@ impl StackFrame {
         self.0.as_ref().borrow_mut()
     }
 
-    pub fn get_sym(&self, idname: &str) -> Option<BaId> {
+    pub fn get_sym(&self, idname: &str) -> Option<LspId> {
         let frame_ref = self.frame_ref();
 
         if let Some(baid) = frame_ref.syms.get(idname) {

@@ -190,7 +190,7 @@ macro_rules! token_recognizer {
 }
 
 // #[macro_export]
-// macro_rules! ctxtype {
+// macro_rules! exref_proto {
 //     ( $exref_t:ident, $ctx:ident ) => {
 //         {
 //             match $exref_t {

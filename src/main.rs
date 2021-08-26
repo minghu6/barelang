@@ -11,6 +11,7 @@ use std::time::{
     SystemTime, UNIX_EPOCH
 };
 
+use bac::ml_simplifier::MLSimplifier;
 // use clap::{
 //     App, Arg, SubCommand
 // };
@@ -24,9 +25,7 @@ use bac::syntax_parser::{
 use bac::semantic_analyzer::{
      analyze_semantic
 };
-use bac::codegen::{
-    codegen
-};
+use bac::codegen::{codegen_bin};
 use bac::error::{
     BaCErr
 };
@@ -66,9 +65,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         compile(&codestr, &tmp_out_fn)?;
 
         let bare_home_str = env::var("BARE_HOME").unwrap_or(".".to_string());
-        let bare_home = Path::new(
+        let bare_home = fs::canonicalize(Path::new(
             &bare_home_str
-        );
+        ))?;
 
         let lib_path = bare_home.join("libbare.so");
 
@@ -102,9 +101,12 @@ pub fn compile(codestr: &str, output: &str) -> Result<(), Box<dyn Error>> {
     match (*PARSER).parse(&codestr) {
         Ok(ast) => {
             println!("AST:\n{}", ast.as_ref().borrow());
-            let frames = analyze_semantic(ast);
-            println!("StackFrames:\n{:#?}", frames);
-            codegen(frames, output)?;
+            let ml = analyze_semantic(ast);
+            println!("ML:\n{:#?}", ml);
+            let mut mlslf = MLSimplifier::new();
+            let bin = mlslf.simplify_ml(ml);
+            println!("BaBin:\n{:#?}", bin);
+            codegen_bin(bin, output)?;
             Ok(())
         },
         Err(msg) => {

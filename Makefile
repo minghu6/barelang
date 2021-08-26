@@ -7,22 +7,12 @@ copybin:
 	@ cp ./target/debug/${BARE_COMPILER} .
 	# @ ./${BARE_COMPILER}
 
-testbin: build copybin
-	@ rustc --crate-type cdylib lib/libbare.rs -o libbare.so
-	@ gcc output.o libbare.so -Xlinker -rpath ./ -o main
-	@ ./main
-
-testclib: build copybin
-	@ g++ examples/main.cpp lib/libbare.cpp output.o -Xlinker -rpath ./ -o main
-	@ ./main
-
-testrlib: build copybin
-	@ gcc -c examples/main.cpp -o main.o
-	@ rustc --crate-type cdylib lib/libbare.rs -o libbare.so
-	@ gcc main.o output.o libbare.so -Xlinker -rpath ./ -o main
-	@ ./main
 
 getbac: build copybin
+
+genlib:
+	@ rustc --crate-type cdylib lib/libbare.rs -o libbare.so
+
 
 testexp0: build copybin
 	@./${BARE_COMPILER} ./examples/exp0.ba
@@ -33,4 +23,4 @@ dump:
 
 .PHONY: clean
 clean:
-	@ rm -f *.so *.o ${BARE_COMPILER} main
+	@ rm -f *.so *.o ${BARE_COMPILER} main *.out

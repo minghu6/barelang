@@ -36,3 +36,5 @@ main
 *.out
 *.app
 bac
+tmp
+__barelang_output*
