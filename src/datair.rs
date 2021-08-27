@@ -1,9 +1,11 @@
 //! IR Data (Non Recursive)
 
 use crate::datalsp::LspId;
-use crate::lexer::Token;
+use crate::lexer::{SrcLoc, Token};
 use crate::semantic_analyzer::BOP_PREC_MAP;
 
+////////////////////////////////////////////////////////////////////////////////
+//// Common Trait
 
 pub trait ToBaType {
     fn to_batype(&self) -> BaType;
@@ -13,17 +15,55 @@ pub trait GetBaType {
     fn get_batype(&self) -> Option<BaType>;
 }
 
+pub trait GetLoc {
+    fn get_loc(&self) -> SrcLoc;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//// BaLit
+
+#[derive(Debug, Clone)]
+pub struct BaUsize {
+    pub val: usize,
+    pub loc: SrcLoc
+}
+
+#[derive(Debug, Clone)]
+pub struct BaI64 {
+    pub val: i64,
+    pub loc: SrcLoc
+}
+
+#[derive(Debug, Clone)]
+pub struct BaI32 {
+    pub val: i32,
+    pub loc: SrcLoc
+}
+
+#[derive(Debug, Clone)]
+pub struct BaU8 {
+    pub val: u8,
+    pub loc: SrcLoc
+}
+
+#[derive(Debug, Clone)]
+pub struct BaFloat {
+    pub val: f64,
+    pub loc: SrcLoc
+}
+
 
 ///
 /// Default Int Type [reference this](https://github.com/rust-lang/rfcs/blob/master/text/0212-restore-int-fallback.md#rationale-for-the-choice-of-defaulting-to-i32)
 ///
 #[derive(Debug, Clone)]
 pub enum BaLit {
-    USize(usize),
-    I64(i64),
-    I32(i32),
-    U8(u8),
-    Float(f64), // 64 bit float
+    USize(BaUsize),
+    I64(BaI64),
+    I32(BaI32),
+    U8(BaU8),
+    Float(BaFloat), // 64 bit float
 }
 
 impl ToBaType for BaLit {
@@ -38,6 +78,21 @@ impl ToBaType for BaLit {
     }
 }
 
+impl GetLoc for BaLit {
+    fn get_loc(&self) -> SrcLoc {
+        match &self {
+            Self::Float(f) => f.loc.clone(),
+            Self::I32(i32) => i32.loc.clone(),
+            Self::I64(i64) => i64.loc.clone(),
+            Self::USize(u) => u.loc.clone(),
+            Self::U8(u8) => u8.loc.clone()
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//// BaType
+
 #[derive(Debug, Clone)]
 pub enum BaType {
     USize,
@@ -49,8 +104,9 @@ pub enum BaType {
     ExRefFunProto(ExRefFunProto)
 }
 
+////////////////////////////////////////////////////////////////////////////////
+//// BaPriVal
 
-/// Primary Value
 #[derive(Debug)]
 pub enum BaPriVal {
     Lit(BaLit),
@@ -74,6 +130,18 @@ impl GetBaType for BaPriVal {
     }
 }
 
+impl GetLoc for BaPriVal {
+    fn get_loc(&self) -> SrcLoc {
+        match &self {
+            Self::Lit(lit) => lit.get_loc(),
+            Self::Id(id) => id.get_loc()
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//// BaFunCall
+
 #[derive(Debug)]
 pub struct BaFunCall {
     pub name: BaId,
@@ -96,29 +164,36 @@ impl BaFunCall {
     }
 }
 
+impl GetLoc for BaFunCall {
+    fn get_loc(&self) -> SrcLoc {
+        self.name.get_loc()
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//// BaId
+
 #[derive(Debug, Clone)]
 pub struct BaId {
     pub name: String,
     pub splid: Option<BaSplId>,
-    pub ty: Option<BaType>
+    pub ty: Option<BaType>,
+    pub loc: SrcLoc
 }
 
-impl BaId {
-    pub fn with_name(name: &str) -> Self {
-        Self {
-            name: name.to_owned(),
-            splid: None,
-            ty: None
-        }
+impl GetLoc for BaId {
+    fn get_loc(&self) -> SrcLoc {
+        self.loc.clone()
     }
 }
 
 impl From<LspId> for BaId {
     fn from(lspid: LspId) -> Self {
         Self {
-            name: lspid.name.clone(),
-            splid: lspid.splid.clone(),
-            ty: None
+            name: lspid.name,
+            splid: lspid.splid,
+            ty: None,
+            loc: lspid.loc
         }
     }
 }
@@ -128,6 +203,9 @@ impl From<LspId> for BaId {
 pub enum BaSplId {
     RS,
 }
+
+////////////////////////////////////////////////////////////////////////////////
+//// BaBOp
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub enum BaBOp {
@@ -157,6 +235,9 @@ impl BaBOp {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+//// BaBin
+
 /// 变量作用域
 #[derive(Debug)]
 pub struct BaBin {
@@ -176,7 +257,7 @@ pub struct BaDeclare {
     pub value: BaDecVal
 }
 
-/// Declared Value
+/// Declared Value <=> LspExpr
 #[derive(Debug)]
 pub enum BaDecVal {
     PriVal(BaPriVal),
@@ -185,7 +266,6 @@ pub enum BaDecVal {
     /// two operand should be same type
     TwoAddr(BaBOp, BaPriVal, BaPriVal)
 }
-
 
 impl BaDecVal {
     pub fn to_type(&self) -> BaType {
@@ -203,6 +283,27 @@ impl BaDecVal {
     }
 }
 
+impl GetBaType for BaDecVal {
+    fn get_batype(&self) -> Option<BaType> {
+        match &self {
+            Self::FunCall(funcall) => funcall.get_ret_type(),
+            Self::PriVal(prival) => prival.get_batype(),
+            Self::TwoAddr(_bop, fstpti, _sndpri) => fstpti.get_batype()
+        }
+    }
+}
+
+impl GetLoc for BaDecVal {
+    fn get_loc(&self) -> SrcLoc {
+        match &self {
+            Self::FunCall(funcall) => funcall.get_loc(),
+            Self::PriVal(prival) => prival.get_loc(),
+            Self::TwoAddr(_bop, fstpti, _sndpri) => {
+                fstpti.get_loc()
+            }
+        }
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 //// External Reference

@@ -57,8 +57,9 @@ impl MLSimplifier {
             LspBlockStmt::Stmt(lspstmt) => {
                 self.simplify_stmt(lspstmt)
             },
-            LspBlockStmt::Declare(lspid) => {
-                self.simplify_declare(lspid)
+            LspBlockStmt::Declare(id, expr) => {
+                self.simplify_declare(id, expr)
+                .into_iter().map(|dec| BaStmt::Declare(dec)).collect_vec()
             }
         }
     }
@@ -66,7 +67,17 @@ impl MLSimplifier {
     fn simplify_stmt(&self, lspstmt: &LspStmt) -> Vec<BaStmt> {
         match lspstmt {
             LspStmt::Expr(lspexpr) => {
-                self.simplify_expr(lspexpr).1
+                let (decval, new_decs) = self.simplify_expr(lspexpr);
+                let mut stmts = new_decs
+                .into_iter()
+                .map(|dec| BaStmt::Declare(dec))
+                .collect_vec();
+
+                if let Some(decstmt) = self.decval2stmt(decval) {
+                    stmts.push(decstmt);
+                }
+
+                stmts
             },
             LspStmt::Empty => {
                 vec![]
@@ -74,123 +85,102 @@ impl MLSimplifier {
         }
     }
 
-    fn simplify_declare(&mut self, lspid: &LspId) -> Vec<BaStmt> {
-        let (value, mut new_stmts) = self.simplify_value(&lspid.value);
+    fn simplify_declare(&mut self, lspid: &LspId, lspexpr: &LspExpr) -> Vec<BaDeclare> {
+        let (decval, mut new_decs)
+        = self.simplify_expr(lspexpr);
 
-        self.symtbl.insert(lspid.sym(), SymItem { ty: value.to_type() });
+        self.symtbl.insert(lspid.sym(), SymItem { ty: decval.get_batype().unwrap() });
 
-        new_stmts.push(
-        BaStmt::Declare(
+        let ty = decval.get_batype();
+        let loc = decval.get_loc();
+        let prival = self.decval2prival(decval, &mut new_decs);
+
+        new_decs.push(
             BaDeclare {
                 name: BaId {
                     name: lspid.name.clone(),
                     splid: lspid.splid.clone(),
-                    ty: Some(value.to_type())
+                    ty,
+                    loc
                 },
-                value
-            })
+                value: BaDecVal::PriVal(prival)
+            }
         );
 
-        new_stmts
+        new_decs
     }
 
-    fn simplify_value(&self, lspval: &LspVal) -> (BaDecVal, Vec<BaStmt>) {
-        match lspval {
-            LspVal::Lit(lit) => {
-                let decval = BaDecVal::PriVal(
-                    BaPriVal::Lit(lit.clone())
-                );
 
-                (decval, vec![])
-            },
-            LspVal::Expr(expr) => {
-                let (lastid, new_stmts) = self.simplify_expr(expr);
-                let decval = BaDecVal::PriVal(
-                    BaPriVal::Id(lastid)
-                );
-
-                (decval, new_stmts)
-            },
-            _ => {
-                unreachable!()
-            }
-        }
-
-    }
-
-    fn simplify_expr(&self, lspexpr: &LspExpr) -> (BaId, Vec<BaStmt>) {
+    fn simplify_expr(&self, lspexpr: &LspExpr) -> (BaDecVal, Vec<BaDeclare>) {
         match lspexpr {
             LspExpr::Pri(pri) => {
                 self.simplify_pri(pri)
             },
             LspExpr::TwoPri(bop, lspfstpri, lspsndpri) => {
-                let (newfstid, mut newfststmts, )
+                let (newfstdecval, mut newfstdecs, )
                 = self.simplify_pri(lspfstpri);
 
-                let (newsndid, newsndstmts, )
+                let (newsnddecval, newsndstmts, )
                  = self.simplify_pri(lspsndpri);
 
-                newfststmts.extend(newsndstmts.into_iter());
+                newfstdecs.extend(newsndstmts.into_iter());
+
+                let ty = newfstdecval.get_batype();
+                let loc = newfstdecval.get_loc();
+
+                let fstpri
+                = self.decval2prival(newfstdecval, &mut newfstdecs);
+
+                let sndpri
+                = self.decval2prival(newsnddecval, &mut newfstdecs);
 
                 let decval
                 = BaDecVal::TwoAddr(
                     bop.clone(),
-                    BaPriVal::Id(newfstid),
-                    BaPriVal::Id(newsndid)
+                    fstpri,
+                    sndpri
                 );
+
                 let decid = BaId {
                     name: gensym_rand(),
                     splid: None,
-                    ty: Some(decval.to_type())
+                    ty,
+                    loc
                 };
 
-                let dec_stmt = BaStmt::Declare(
-                    BaDeclare {
-                        name: decid.clone(),
-                        value: decval
-                    }
-                );
+                let dec = BaDeclare {
+                    name: decid.clone(),
+                    value: decval
+                };
 
-                newfststmts.push(dec_stmt);
+                newfstdecs.push(dec);
 
-                (decid, newfststmts)
+                (BaDecVal::PriVal(BaPriVal::Id(decid)), newfstdecs)
             },
             LspExpr::FunCall(lspfuncall) => {
                 self.simplify_funcall(lspfuncall)
             },
             LspExpr::CompPri(lspcomptn) => {
-                self.simplify_compexpr(lspcomptn)
+                let (prival, new_decs)
+                = self.simplify_compexpr(lspcomptn);
+
+                (BaDecVal::PriVal(prival), new_decs)
             }
         }
     }
 
-    fn simplify_pri(&self, lsppri: &LspPri) -> (BaId, Vec<BaStmt>) {
+    fn simplify_pri(&self, lsppri: &LspPri) -> (BaDecVal, Vec<BaDeclare>) {
         match lsppri {
             LspPri::Expr(lspexpr_rc) => {
                 self.simplify_expr(&lspexpr_rc.as_ref().borrow())
             },
             LspPri::Id(lspid_rc) => {
                 let id = self.simplify_id(&lspid_rc.as_ref().borrow());
-                // TODO: type annotation
-                (id, vec![])
-            },
-            LspPri::Val(lspval) => {
-                let (val, mut new_stmts) = self.simplify_value(lspval);
-                let newsym = gensym_rand();
-                let newid = BaId {
-                    name: newsym,
-                    splid: None,
-                    ty: Some(val.to_type())
-                };
-                let dec_stmt = BaStmt::Declare(
-                    BaDeclare {
-                        name: newid.clone(),
-                        value: val
-                    }
-                );
-                new_stmts.push(dec_stmt);
 
-                (newid, new_stmts)
+                (BaDecVal::PriVal(BaPriVal::Id(id)), vec![])
+            },
+            LspPri::Lit(lit) => {
+                (BaDecVal::PriVal(BaPriVal::Lit(lit.clone())), vec![])
             }
         }
     }
@@ -206,18 +196,44 @@ impl MLSimplifier {
         BaId {
             name: lspid.name.clone(),
             splid: lspid.splid.clone(),
-            ty
+            ty,
+            loc: lspid.loc.clone()
         }
     }
 
-    fn simplify_funcall(&self, lspfuncall: &LspFunCall) -> (BaId, Vec<BaStmt>) {
-        let mut new_stmts = vec![];
+    fn simplify_funcall(&self, lspfuncall: &LspFunCall)
+    -> (BaDecVal, Vec<BaDeclare>)
+    {
+        let mut new_decs = vec![];
         let mut new_args = vec![];
 
         for arg in lspfuncall.args.iter() {
-            let (newid, arg_stmts) = self.simplify_expr(arg);
-            new_stmts.extend(arg_stmts.into_iter());
-            new_args.push(BaPriVal::Id(newid));
+            let (decval, arg_decs) = self.simplify_expr(arg);
+            new_decs.extend(arg_decs.into_iter());
+
+            match decval {
+                BaDecVal::PriVal(prival) => {
+                    new_args.push(prival);
+                },
+                _ => {
+                    let id = BaId {
+                        name: gensym_rand(),
+                        splid: None,
+                        ty: decval.get_batype(),
+                        loc: decval.get_loc()
+                    };
+
+                    let dec = BaDeclare {
+                        name: id.clone(),
+                        value: decval
+                    };
+
+                    new_decs.push(dec);
+
+                    new_args.push(BaPriVal::Id(id));
+                }
+            }
+
         }
 
         let new_funcall = BaFunCall {
@@ -225,68 +241,102 @@ impl MLSimplifier {
             args: new_args
         };
 
-        new_stmts.push(BaStmt::FunCall(new_funcall));
+        let decval = BaDecVal::FunCall(new_funcall);
 
-        (lspfuncall.name.clone(), new_stmts)
+        (decval, new_decs)
     }
 
-
-
-    fn simplify_compexpr(&self, pritn: &LspCompPriTN) -> (BaId, Vec<BaStmt>) {
+    fn simplify_compexpr(&self, pritn: &LspCompPriTN) -> (BaPriVal, Vec<BaDeclare>) {
         let mut gensym_ser = gen_gensym_ser("tmp", gen_counter());
 
         self.unfold_compexpr(pritn, &mut gensym_ser)
     }
 
-    fn unfold_compexpr(&self, pritn: &LspCompPriTN, gensym_ser: &mut SymGen) -> (BaId, Vec<BaStmt>) {
+    ////////////////////////////////////////////////////////////////////////////////
+    //// Helper
+
+    fn unfold_compexpr(&self, pritn: &LspCompPriTN, gensym_ser: &mut SymGen)
+    -> (BaPriVal, Vec<BaDeclare>)
+    {
         match pritn {
             LspCompPriTN::Tree(tree_rc) => {
                 let tree_ref = tree_rc.as_ref().borrow();
 
-                let (lf_id, mut lf_stmts)
+                let (lf_pri, mut lf_decs)
                 = self.unfold_compexpr(&tree_ref.lf, gensym_ser);
 
-                let (rh_id, rh_stmts)
+                let (rh_pri, rh_decs)
                 = self.unfold_compexpr(&tree_ref.rh, gensym_ser);
 
                 /* build declare expression */
-
+                let loc = lf_pri.get_loc();
                 let decval = BaDecVal::TwoAddr(
                     tree_ref.bop.clone(),
-                    BaPriVal::Id(lf_id),
-                    BaPriVal::Id(rh_id),
+                    lf_pri,
+                    rh_pri,
                 );
                 let decid = BaId {
                     name: gensym_ser(),
                     splid: None,
-                    ty: Some(decval.to_type())
+                    ty: Some(decval.to_type()),
+                    loc
                 };
 
-                let decstmt = BaStmt::Declare(
-                    BaDeclare {
-                        name: decid.clone(),
-                        value: decval
-                    }
-                );
+                let dec = BaDeclare {
+                    name: decid.clone(),
+                    value: decval
+                };
 
-                lf_stmts.extend(rh_stmts.into_iter());
-                lf_stmts.push(decstmt);
+                lf_decs.extend(rh_decs.into_iter());
+                lf_decs.push(dec);
 
-                (decid, lf_stmts)
+                (BaPriVal::Id(decid), lf_decs)
             },
             LspCompPriTN::Leaf(lsppri_rc) => {
-                let (pri_id, new_stmts)
+                let (decval, mut new_decs)
                 = self.simplify_pri(&lsppri_rc.as_ref().borrow());
 
-                (pri_id, new_stmts)
+                let newprival = self.decval2prival(decval, &mut new_decs);
+
+                (newprival, new_decs)
             }
         }
     }
+
+    fn decval2prival(&self, decval: BaDecVal, new_decs: &mut Vec<BaDeclare>) -> BaPriVal {
+        match decval {
+            BaDecVal::PriVal(prival) => {
+                prival
+            },
+            _ => {
+                let id = BaId {
+                    name: gensym_rand(),
+                    splid: None,
+                    ty: decval.get_batype(),
+                    loc: decval.get_loc()
+                };
+
+                let dec = BaDeclare {
+                    name: id.clone(),
+                    value: decval
+                };
+
+                new_decs.push(dec);
+
+                BaPriVal::Id(id)
+            }
+        }
+    }
+
+    fn decval2stmt(&self, decval: BaDecVal) -> Option<BaStmt> {
+        match decval {
+            BaDecVal::FunCall(funcall) => {
+                Some(BaStmt::FunCall(funcall))
+            },
+            _ => None
+        }
+    }
 }
-
-////////////////////////////////////////////////////////////////////////////////
-//// Bare Lang semantics analyze step 1:- Ref Resolver
-
 
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -65,7 +65,10 @@ fn analyze_block_stmt(ast_node: &ASTNode) -> LspBlockStmt {
 
     match fstsym.to_string().as_str() {
         "[Stmt]" => LspBlockStmt::Stmt(analyze_stmt(fstelem)),
-        "[VariableDeclarator]" => LspBlockStmt::Declare(analyze_variable_declarator(fstelem)),
+        "[VariableDeclarator]" => {
+            let (id, expr) = analyze_variable_declarator(fstelem);
+            LspBlockStmt::Declare(id, expr)
+        },
         _ => unreachable!(),
     }
 }
@@ -150,7 +153,7 @@ fn analyze_pri(ast_node: &ASTNode) -> LspPri {
     let (fstsym, fstelem) = elems_iter.next().unwrap();
 
     match fstsym.to_string().as_str() {
-        "[Lit]" => LspPri::Val(analyze_lit(fstelem)),
+        "[Lit]" => LspPri::Lit(analyze_lit(fstelem)),
         "[Id]" => LspPri::Id(Rc::new(RefCell::new(analyze_id(fstelem)))),
         "<paren>" => LspPri::Expr(Rc::new(RefCell::new(analyze_expr(
             &elems_iter.next().unwrap().1,
@@ -206,7 +209,7 @@ fn analyze_fun_call(ast_node: &ASTNode) -> LspFunCall {
     }
 }
 
-fn analyze_variable_declarator(ast_node: &ASTNode) -> LspId {
+fn analyze_variable_declarator(ast_node: &ASTNode) -> (LspId, LspExpr) {
     let ast_ref = ast_node.get_ast().unwrap().as_ref().borrow();
 
     let mut elems_iter = ast_ref.elems_vec().into_iter();
@@ -215,14 +218,17 @@ fn analyze_variable_declarator(ast_node: &ASTNode) -> LspId {
     elems_iter.next().unwrap();
     let (_third_sym, third_elem) = elems_iter.next().unwrap();
 
-    let name = analyze_t_id(fstelem);
+    let id_lspid = analyze_t_id(fstelem);
     let expr = analyze_variable_initializer(third_elem);
 
-    LspId {
-        name,
-        value: LspVal::Expr(Rc::new(expr)),
+
+    let decid = LspId {
+        name: id_lspid.sym(),
         splid: None,
-    }
+        loc: id_lspid.loc.clone()
+    };
+
+    (decid, expr)
 }
 
 fn analyze_variable_initializer(ast_node: &ASTNode) -> LspExpr {
@@ -260,25 +266,20 @@ fn analyze_id(ast_node: &ASTNode) -> LspId {
     let (fstsym, fstelem) = elems_iter.next().unwrap();
 
     match fstsym.to_string().as_str() {
-        "<id>" => LspId {
-            splid: None,
-            name: analyze_t_id(fstelem),
-            value: LspVal::Unresolved,
-        },
+        "<id>" => analyze_t_id(fstelem),
         "<splid>" => {
             let splid = analyze_t_splid(fstelem);
-            let t_id = analyze_t_id(&elems_iter.next().unwrap().1);
-            LspId {
-                splid: Some(splid),
-                name: t_id,
-                value: LspVal::Unresolved,
-            }
+            let mut t_id = analyze_t_id(&elems_iter.next().unwrap().1);
+
+            t_id.splid = Some(splid);
+
+            t_id
         }
         _ => unreachable!(),
     }
 }
 
-fn analyze_lit(ast_node: &ASTNode) -> LspVal {
+fn analyze_lit(ast_node: &ASTNode) -> BaLit {
     let ast_ref = ast_node.get_ast().unwrap().as_ref().borrow();
 
     let mut elems_iter = ast_ref.elems_vec().into_iter();
@@ -291,8 +292,14 @@ fn analyze_lit(ast_node: &ASTNode) -> LspVal {
     }
 }
 
-fn analyze_t_id(ast_node: &ASTNode) -> String {
-    ast_node.get_token().unwrap().as_ref().value().to_string()
+fn analyze_t_id(ast_node: &ASTNode) -> LspId {
+    let tok = ast_node.get_token().unwrap().as_ref();
+
+    LspId {
+        name: tok.value().to_string(),
+        splid: None,
+        loc: tok.loc()
+    }
 }
 
 fn analyze_t_splid(ast_node: &ASTNode) -> BaSplId {
@@ -304,13 +311,14 @@ fn analyze_t_splid(ast_node: &ASTNode) -> BaSplId {
     }
 }
 
-fn analyze_t_intlit(ast_node: &ASTNode) -> LspVal {
-    let mut tokv = ast_node.get_token().unwrap().as_ref().value();
+fn analyze_t_intlit(ast_node: &ASTNode) -> BaLit {
+    let tok = ast_node.get_token().unwrap().as_ref();
+    let mut tokv = tok.value();
 
     let is_neg = if tokv.starts_with("-") { true } else { false };
 
     // Handle Hex Number Literal
-    if tokv.contains("0x") {
+    let bai32val = if tokv.contains("0x") {
         if tokv.starts_with("-") {
             tokv = tokv.trim_start_matches("-");
         } else if tokv.starts_with("+") {
@@ -320,13 +328,18 @@ fn analyze_t_intlit(ast_node: &ASTNode) -> LspVal {
         tokv = tokv.trim_start_matches("0x");
 
         if is_neg {
-            LspVal::Lit(BaLit::I32(-i32::from_str_radix(tokv, 16).unwrap()))
+            -i32::from_str_radix(tokv, 16).unwrap()
         } else {
-            LspVal::Lit(BaLit::I32(i32::from_str_radix(tokv, 16).unwrap()))
+            i32::from_str_radix(tokv, 16).unwrap()
         }
     } else {
-        LspVal::Lit(BaLit::I32(tokv.parse::<i32>().unwrap()))
-    }
+        tokv.parse::<i32>().unwrap()
+    };
+
+    BaLit::I32(BaI32 {
+        val: bai32val,
+        loc: tok.loc()
+    })
 }
 
 
@@ -351,14 +364,20 @@ mod test {
 
     #[test]
     fn test_semantics_analyze() {
-        use std::fs;
 
         use crate::syntax_parser::{Parser, PARSER};
         use crate::semantic_analyzer::{analyze_ast};
 
-        let data0 = fs::read_to_string("./examples/exp0.ba").expect("Unable to read file");
+        use std::path::PathBuf;
+        use crate::lexer::{
+            SrcFileInfo
+        };
 
-        match (*PARSER).parse(&data0) {
+
+        let srcfile
+        = SrcFileInfo::new(PathBuf::from("./examples/exp0.ba")).unwrap();
+
+        match (*PARSER).parse(&srcfile) {
             Ok(res) => {
                 println!("{}", res.as_ref().borrow());
 

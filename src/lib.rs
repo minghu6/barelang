@@ -21,7 +21,9 @@ pub mod rslib;
 pub mod utils;
 pub mod error;
 
+use std::path::PathBuf;
 
+use lexer::SrcFileInfo;
 pub use proc_macros::{
     make_vec_macro_rules,
     make_char_matcher_rules,
@@ -29,3 +31,32 @@ pub use proc_macros::{
 };
 
 make_vec_macro_rules!(vecdeq , std::collections::VecDeque, push_back);
+
+
+///////////////////////////////////////////////////////////////////////////
+//// Compiler Config
+
+pub enum OptLv {
+    Debug,
+    Opt(usize)
+}
+
+pub enum TargetType {
+    Bin,
+    ReLoc,
+    DyLib
+}
+
+pub struct CompilerConfig {
+    pub optlv: OptLv,
+    pub target_type: TargetType,
+    pub file: SrcFileInfo,
+    pub objpath: PathBuf
+}
+
+
+impl CompilerConfig {
+    pub fn get_module_name(&self) -> String {
+        self.file.get_path().file_name().unwrap().to_string_lossy().to_string()
+    }
+}

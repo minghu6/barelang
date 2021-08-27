@@ -3,7 +3,11 @@ use itertools::Itertools;
 use regex::Regex;
 use lazy_static::lazy_static;
 
+use std::fmt::Debug;
+use std::path::PathBuf;
 use std::{fmt, vec};
+use std::fs;
+use std::error::Error;
 
 use crate::gram::*;
 use crate::rules::{LexSt, barelang_lexdfamap, barelang_token_matcher_vec};
@@ -16,6 +20,7 @@ use crate::rules::{LexSt, barelang_lexdfamap, barelang_token_matcher_vec};
 pub struct Token {
     name: String,
     value: String,
+    loc: SrcLoc
 }
 
 impl Token {
@@ -25,6 +30,10 @@ impl Token {
 
     pub fn value(&self) -> &str {
         &self.value
+    }
+
+    pub fn loc(&self) -> SrcLoc {
+        self.loc.clone()
     }
 
     pub fn to_fst_set_sym(&self) -> FstSetSym {
@@ -52,6 +61,100 @@ impl fmt::Display for Token {
     }
 }
 
+
+
+////////////////////////////////////////////////////////////////////////////////
+//// Source File Structure
+
+
+/// SrcFileInfo
+#[allow(dead_code)]
+pub struct SrcFileInfo {
+    /// Source file path
+    path: PathBuf,
+
+    /// lines[x]: number of total chars until lines x [x]
+    /// inspired by `proc_macro2`: `FileInfo`
+    lines: Vec<usize>,
+
+    srcstr: String
+}
+
+impl SrcFileInfo {
+    pub fn new(path: PathBuf) -> Result<Self, Box<dyn Error>> {
+        let srcstr = fs::read_to_string(&path)?;
+
+        let lines = Self::build_lines(&srcstr);
+
+        Ok(Self {
+            path,
+            lines,
+            srcstr
+        })
+    }
+
+    fn build_lines(srcstr: &str) -> Vec<usize> {
+        let mut lines = vec![0];
+        let mut total = 0usize;
+
+        for c in srcstr.chars() {
+            total += 1;
+
+            if c == '\n' {
+                lines.push(total);
+            }
+        }
+
+        lines
+    }
+
+    pub fn get_srcstr(&self) -> &str {
+        &self.srcstr
+    }
+
+    pub fn get_path(&self) -> &PathBuf {
+        &self.path
+    }
+
+    pub fn offset2srcloc(&self, offset: usize) -> SrcLoc {
+        match self.lines.binary_search(&offset) {
+            Ok(found) => {
+                SrcLoc {
+                    ln: found,
+                    col: 0  // 换行处
+                }
+            },
+            Err(idx) => {
+                SrcLoc {
+                    ln: idx,
+                    col: offset - self.lines[idx - 1]  // 显然idx >= 0
+                }
+            }
+        }
+    }
+}
+
+
+#[derive(Clone)]
+pub struct SrcLoc {
+    pub ln: usize,
+    pub col: usize
+}
+
+impl SrcLoc {
+    pub fn new(loc_tuple: (usize, usize)) -> Self {
+        Self {
+            ln: loc_tuple.0,
+            col: loc_tuple.1
+        }
+    }
+}
+
+impl Debug for SrcLoc {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "({}, {})", self.ln, self.col)
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Char Matcher (used for string splitter)
@@ -145,12 +248,13 @@ lazy_static! {
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Lexer
-fn gen_token(word: &str) -> Result<Token, String> {
+fn gen_token(word: &str, srcloc: SrcLoc) -> Result<Token, String> {
     for (matcher, tokn) in (*TOKEN_MATCHER_VEC).iter() {
         if matcher.is_match(word) {
             return Ok(Token {
                 name: tokn.clone(),
-                value: word.to_owned()
+                value: word.to_owned(),
+                loc: srcloc
             });
         }
     }
@@ -159,7 +263,8 @@ fn gen_token(word: &str) -> Result<Token, String> {
 }
 
 
-pub fn tokenize(source: &str) -> Vec<Token> {
+pub fn tokenize(srcfile: &SrcFileInfo) -> Vec<Token> {
+    let source = srcfile.get_srcstr();
 
     let mut tokens = vec![];
 
@@ -169,6 +274,7 @@ pub fn tokenize(source: &str) -> Vec<Token> {
 
     let mut cur_st = LexSt::Entry;
     let mut cache = String::new();
+    let mut total = 0usize;
 
     for c in source.chars() {
         let items
@@ -212,20 +318,30 @@ pub fn tokenize(source: &str) -> Vec<Token> {
         let is_tok_end = found_item.1.1;
 
         if is_tok_end {
-            // println!("{}", cache);
-            let tok = gen_token(&cache).unwrap();
-            // println!("{}", tok);
+            println!("{}, len:{}", cache, cache.len());
+            let tok = gen_token(
+                &cache,
+                srcfile.offset2srcloc(total + 1 - cache.len())
+                ).unwrap();
+
+                // println!("{}", tok);
             tokens.push(tok);
 
             cache.clear();
         }
 
         cache.push(c);
+
+        total += 1;
     }
 
     // tail recycle
     // println!("{}", cache);
-    let tok = gen_token(&cache).unwrap();
+    let tok = gen_token(
+        &cache,
+        srcfile.offset2srcloc(total + 1 - cache.len())
+    ).unwrap();
+
     // println!("{}", tok);
     tokens.push(tok);
 
@@ -239,16 +355,19 @@ pub fn tokenize(source: &str) -> Vec<Token> {
 
 #[cfg(test)]
 mod test {
-    use itertools::Itertools;
 
     #[test]
     fn test_lex() {
-        use crate::lexer::tokenize;
-        use std::fs;
+        use std::path::PathBuf;
+        use itertools::Itertools;
+        use crate::lexer::{
+            tokenize, SrcFileInfo
+        };
 
-        let data0 = fs::read_to_string("./examples/exp0.ba").expect("Unable to read file");
+        let srcfile
+        = SrcFileInfo::new(PathBuf::from("./examples/exp0.ba")).unwrap();
 
-        let tokens = tokenize(&data0);
+        let tokens = tokenize(&srcfile);
 
         let trimed_tokens
         = tokens.into_iter().filter(|tok| {

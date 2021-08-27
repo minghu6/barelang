@@ -27,6 +27,18 @@ use crate::ml_simplifier::gensym_rand;
 use crate::rslib::search_rs_lib;
 
 
+pub fn codegen(config: &CompilerConfig, bin: &BaBin) -> Result<(), Box<dyn Error>> {
+    let context = Context::create();
+
+    let mut codegen
+    = CodeGen::new(
+        &context,
+        config
+    );
+
+    codegen.codegen(bin)
+}
+
 
 #[allow(unused)]
 struct CodeGen<'ctx> {
@@ -34,39 +46,18 @@ struct CodeGen<'ctx> {
     module: Module<'ctx>,
     builder: Builder<'ctx>,
     fpm: PassManager<FunctionValue<'ctx>>,
-    namedvars: IndexMap<String, PointerValue<'ctx>>
+    namedvars: IndexMap<String, PointerValue<'ctx>>,
+    config: &'ctx CompilerConfig
 }
 
-
-pub fn codegen_bin(bin: BaBin, output: &str) -> Result<(), Box<dyn Error>> {
-    let context = Context::create();
-    let mut codegen = CodeGen::with_mid(&context, "main");
-
-    codegen.begin_main();
-
-    for stmt in bin.stmts.iter() {
-        match stmt {
-            BaStmt::Declare(dec) => {
-                codegen.codegen_declare(dec)?;
-            },
-            BaStmt::FunCall(funcall) => {
-                codegen.codegen_funcall(funcall)?;
-            }
-        }
-    }
-
-    codegen.end_main_ok();
-
-    codegen.gen_target(output)
-}
 
 #[allow(dead_code)]
 impl<'ctx> CodeGen<'ctx> {
     ///////////////////////////////////////////////////////////////////////////
     //// CodeGen Init
 
-    fn with_mid(context: &'ctx Context, mid: &str) -> Self {
-        let module = context.create_module(mid);
+    fn new(context: &'ctx Context, config: &'ctx CompilerConfig) -> Self {
+        let module = context.create_module(config.get_module_name().as_str());
         let fpm = PassManager::create(&module);
 
         fpm.add_instruction_combining_pass();
@@ -84,14 +75,43 @@ impl<'ctx> CodeGen<'ctx> {
             builder: context.create_builder(),
             context: &context,
             fpm,
-            namedvars: IndexMap::new()
+            namedvars: IndexMap::new(),
+            config
         }
+    }
+
+    pub fn codegen(&mut self, bin: &BaBin) -> Result<(), Box<dyn Error>> {
+        match self.config.target_type {
+            TargetType::Bin => {
+                self.codegen_bin(bin)
+            },
+            _ => unimplemented!()
+        }
+    }
+
+    pub fn codegen_bin(&mut self, bin: &BaBin) -> Result<(), Box<dyn Error>> {
+        self.begin_main();
+
+        for stmt in bin.stmts.iter() {
+            match stmt {
+                BaStmt::Declare(dec) => {
+                    self.codegen_declare(dec)?;
+                },
+                BaStmt::FunCall(funcall) => {
+                    self.codegen_funcall(funcall)?;
+                }
+            }
+        }
+
+        self.end_main_ok();
+
+        self.gen_target(self.config.objpath.clone())
     }
 
     ///////////////////////////////////////////////////////////////////////////
     //// Target Generation
 
-    fn gen_target(&self, output: &str) -> Result<(), Box<dyn Error>> {
+    fn gen_target(&self, output: PathBuf) -> Result<(), Box<dyn Error>> {
         Target::initialize_native(&InitializationConfig::default())?;
 
         let triple = TargetMachine::get_default_triple();
@@ -117,6 +137,7 @@ impl<'ctx> CodeGen<'ctx> {
 
     ///////////////////////////////////////////////////////////////////////////
     //// Entry point codegen
+
     fn begin_main(&self) {
         let i64_type = self.context.i64_type();
         let fn_main_t = i64_type.fn_type(&[], false);
@@ -127,6 +148,8 @@ impl<'ctx> CodeGen<'ctx> {
 
     fn end_main(&self, rtn: IntValue<'ctx>) {
         self.builder.build_return(Some(&rtn));
+        let main_fn = self.module.get_function("main").unwrap();
+        self.fpm.run_on(&main_fn);
     }
 
     fn end_main_ok(&self) {
@@ -193,7 +216,7 @@ impl<'ctx> CodeGen<'ctx> {
                 match lit {
                     BaLit::I32(i32val) => {
                         let i32_t = self.context.i32_type();
-                        let value = i32_t.const_int(*i32val as u64, false);
+                        let value = i32_t.const_int(i32val.val as u64, false);
                         ptr = self.builder.build_alloca(i32_t, &gensym_rand());
                         self.builder.build_store(ptr, value);
 
@@ -436,22 +459,6 @@ impl<'ctx> CodeGen<'ctx> {
     ///////////////////////////////////////////////////////////////////////////
     //// Basic Type Cast
 
-    // fn implicitly_type(&self, fst_t: &BasicTypeEnum<'ctx>, snd_t: &BasicTypeEnum<'ctx>)
-    // -> Result<BasicTypeEnum<'ctx>, Box<dyn Error>>
-    // {
-    //     match fst_t {
-    //         &BasicTypeEnum::IntType(fst_int_t) => {
-    //             match snd_t {
-    //                 &BasicTypeEnum::IntType(snd_int_t) => {
-    //                     Ok(BasicTypeEnum::IntType(fst_int_t))
-    //                 },
-    //                 _ => todo!()
-    //             }
-    //         },
-    //         _ => todo!()
-    //     }
-    // }
-
     fn try_as_float_val(&self, vale: BasicValueEnum<'ctx>)
     -> Result<FloatValue<'ctx>, Box<dyn Error>>
     {
@@ -482,13 +489,13 @@ impl<'ctx> CodeGen<'ctx> {
         match lit {
             BaLit::I32(i32val) => {
                 let i32_t = self.context.i32_type();
-                let value = i32_t.const_int(*i32val as u64, false);
+                let value = i32_t.const_int(i32val.val as u64, false);
 
                 BasicValueEnum::IntValue(value)
             },
             BaLit::Float(f64val) => {
                 let f64_t = self.context.f64_type();
-                let value = f64_t.const_float(*f64val);
+                let value = f64_t.const_float(f64val.val);
 
                 BasicValueEnum::FloatValue(value)
             }
@@ -522,20 +529,6 @@ impl<'ctx> CodeGen<'ctx> {
             &ExRefType::Void => Either::Right(self.context.void_type()),
         }
     }
-
-    // fn exrefty2anyty(&self, ty: &ExRefType) -> AnyTypeEnum<'ctx> {
-    //     match ty {
-    //         &ExRefType::F64  => AnyTypeEnum::<'ctx>::FloatType(
-    //             self.context.f64_type()
-    //         ),
-    //         &ExRefType::I64  => AnyTypeEnum::<'ctx>::IntType(
-    //             self.context.i64_type()
-    //         ),
-    //         &ExRefType::Void => AnyTypeEnum::<'ctx>::VoidType(
-    //             self.context.void_type()
-    //         ),
-    //     }
-    // }
 
     fn exrefty2basicty(&self, ty: &ExRefType) -> Option<BasicTypeEnum<'ctx>> {
         match ty {

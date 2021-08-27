@@ -11,29 +11,28 @@ use std::{
 
 use indexmap::IndexMap;
 
-use crate::{datair::BaId, error::BaCErr, utils::Stack};
-use crate::lexer::Token;
+use crate::utils::Stack;
+use crate::datair::{
+    BaId, GetLoc
+};
+use crate::error::BaCErr;
+use crate::lexer::{
+    Token, SrcLoc
+};
 use crate::semantic_analyzer::BOP_PREC_MAP;
 use crate::datair::{
     BaLit, BaSplId, BaBOp
 };
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Bare Language Data Structure
-
-
-#[derive(Debug, Clone)]
-pub enum LspVal {
-    Lit(BaLit),
-    Expr(Rc<LspExpr>),
-    Unresolved,
-}
 
 #[derive(Debug, Clone)]
 pub struct LspId {
     pub name: String,
     pub splid: Option<BaSplId>,
 
-    pub value: LspVal,
+    pub loc: SrcLoc
 }
 
 impl LspId {
@@ -55,9 +54,25 @@ impl LspId {
 
 #[derive(Debug, Clone)]
 pub enum LspPri {
-    Val(LspVal),
+    Lit(BaLit),
     Id(Rc<RefCell<LspId>>),
     Expr(Rc<RefCell<LspExpr>>)
+}
+
+impl GetLoc for LspPri {
+    fn get_loc(&self) -> SrcLoc {
+        match &self {
+            Self::Expr(expr_rc) => {
+                expr_rc.as_ref().borrow().get_loc()
+            },
+            Self::Lit(lit) => {
+                lit.get_loc()
+            },
+            Self::Id(id_rc) => {
+                id_rc.as_ref().borrow().loc.clone()
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -68,6 +83,25 @@ pub enum LspExpr {
     // Pri is just a special case of CompPri, We do for flatten structure
     CompPri(LspCompPriTN),
     TwoPri(BaBOp, LspPri, LspPri)
+}
+
+impl GetLoc for LspExpr  {
+    fn get_loc(&self) -> SrcLoc {
+        match &self {
+            Self::CompPri(comppri) => {
+                comppri.get_loc()
+            },
+            Self::FunCall(funcall) => {
+                funcall.get_loc()
+            },
+            Self::Pri(pri) => {
+                pri.get_loc()
+            },
+            Self::TwoPri(_bop, fstpri, _sndpri) => {
+                fstpri.get_loc()
+            }
+        }
+    }
 }
 
 
@@ -108,11 +142,52 @@ impl LspCompPriTN {
 }
 
 
+impl GetLoc for LspCompPriTN {
+    fn get_loc(&self) -> SrcLoc {
+        match &self {
+            Self::Leaf(pri_rc) => {
+                pri_rc.as_ref().borrow().get_loc()
+            },
+            Self::Tree(tree_rc) => {
+                tree_rc.as_ref().borrow().get_loc()
+            }
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct LspCompPriT {
     pub bop: BaBOp,
     pub lf: LspCompPriTN,
     pub rh: LspCompPriTN
+}
+
+impl LspCompPriT {
+    fn first_pri(tree_rc: Rc<RefCell<LspCompPriT>>) -> Rc<RefCell<LspPri>> {
+        let tree_ref = tree_rc.as_ref().borrow();
+
+        match &tree_ref.lf {
+            LspCompPriTN::Tree(_tree_ref) => {
+                Self::first_pri(tree_rc.clone())
+            },
+            LspCompPriTN::Leaf(pri_rc) => pri_rc.clone(),
+        }
+    }
+}
+
+impl GetLoc for LspCompPriT {
+    fn get_loc(&self) -> SrcLoc {
+        match &self.lf {
+            LspCompPriTN::Tree(lftree_rc) => {
+                let fstpri_rc = Self::first_pri(lftree_rc.clone());
+                let fstpri_ref = fstpri_rc.as_ref().borrow();
+                fstpri_ref.get_loc()
+            },
+            LspCompPriTN::Leaf(leaf_rc) => {
+                leaf_rc.as_ref().borrow().get_loc()
+            },
+        }
+    }
 }
 
 
@@ -128,10 +203,17 @@ pub struct LspFunCall {
     pub args: Vec<LspExpr>,
 }
 
+impl GetLoc for LspFunCall {
+    fn get_loc(&self) -> SrcLoc {
+        self.name.loc.clone()
+    }
+}
+
+
 #[derive(Debug)]
 pub enum LspBlockStmt {
     Stmt(LspStmt),
-    Declare(LspId),
+    Declare(LspId, LspExpr),
 }
 
 #[derive(Debug, Clone)]
@@ -154,70 +236,4 @@ impl LspBlockStmtRef {
 #[derive(Debug)]
 pub enum ModuleLisp {
     BlockStmts(Vec<LspBlockStmtRef>),
-}
-
-
-////////////////////////////////////////////////////////////////////////////////
-//// Stack Frame
-
-#[derive(Debug)]
-pub struct _StackFrame {
-    pub syms: IndexMap<String, LspId>,
-    pub blockstmts: Vec<LspBlockStmtRef>,
-    pub paren: Option<StackFrame>,
-    pub children: Vec<StackFrame>,
-}
-
-/// _StackFrame Rc<RefCell<T>> Wrapper
-#[derive(Clone)]
-pub struct StackFrame(Rc<RefCell<_StackFrame>>);
-
-impl StackFrame {
-    pub fn new(
-        syms: IndexMap<String, LspId>,
-        blockstmts: Vec<LspBlockStmtRef>,
-        paren: Option<Self>,
-        children: Vec<Self>,
-    ) -> Self {
-        Self(Rc::new(RefCell::new(_StackFrame {
-            syms,
-            blockstmts,
-            paren,
-            children,
-        })))
-    }
-
-    pub fn paren(&self) -> Option<Self> {
-        self.0.as_ref().borrow().paren.clone()
-    }
-
-    pub fn frame_ref(&self) -> Ref<_StackFrame> {
-        self.0.as_ref().borrow()
-    }
-
-    pub fn frame_ref_mut(&self) -> RefMut<_StackFrame> {
-        self.0.as_ref().borrow_mut()
-    }
-
-    pub fn get_sym(&self, idname: &str) -> Option<LspId> {
-        let frame_ref = self.frame_ref();
-
-        if let Some(baid) = frame_ref.syms.get(idname) {
-            Some(baid.clone())
-        } else if let Some(paren_frame) = &frame_ref.paren {
-            paren_frame.get_sym(idname)
-        } else {
-            None
-        }
-    }
-}
-
-impl Debug for StackFrame {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if f.alternate() {
-            write!(f, "{:#?}", self.frame_ref())
-        } else {
-            write!(f, "{:?}", self.frame_ref())
-        }
-    }
 }

@@ -169,7 +169,7 @@ impl fmt::Display for AST {
 ////////////////////////////////////////////////////////////////////////////////
 /////// Parser Trait
 pub trait Parser {
-    fn parse(&self, source: &str) -> Result<Rc<RefCell<AST>>, String>;
+    fn parse(&self, source: &SrcFileInfo) -> Result<Rc<RefCell<AST>>, String>;
 }
 
 
@@ -229,7 +229,7 @@ impl LL1Parser {
 
 // Impl for Parser
 impl Parser for LL1Parser {
-    fn parse(&self, source: &str) -> Result<Rc<RefCell<AST>>, String> {
+    fn parse(&self, source: &SrcFileInfo) -> Result<Rc<RefCell<AST>>, String> {
         let tokens = tokenize(source);
 
         // trim tokens
@@ -535,12 +535,17 @@ mod test {
 
     #[test]
     fn test_synax() {
+        use std::path::PathBuf;
+        use crate::lexer::{
+            SrcFileInfo
+        };
         use super::PARSER;
-        use std::fs;
 
-        let data0 = fs::read_to_string("./examples/exp0.ba").expect("Unable to read file");
 
-        match (*PARSER).parse(&data0) {
+        let srcfile
+        = SrcFileInfo::new(PathBuf::from("./examples/exp0.ba")).unwrap();
+
+        match (*PARSER).parse(&srcfile) {
             Ok(res) => {
                 println!("{}", res.as_ref().borrow())
             },

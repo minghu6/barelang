@@ -418,8 +418,7 @@ mod test {
         matcher = Regex::new(r#"[\[\]{}\(\)]"#).unwrap();
         assert!(matcher.is_match("["));
         assert!(matcher.is_match("}"));
-        assert!(!matcher.is_match("a"));
-
+    assert!(!matcher.is_match("a"));
         matcher = Regex::new(r#"[^[*/]]"#).unwrap();
         assert!(matcher.is_match("a"));
         assert!(!matcher.is_match("*"));
