@@ -8,6 +8,9 @@ use inkwell::passes::{PassManager, PassManagerBuilder};
 use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
 use inkwell::types::{AnyTypeEnum, BasicType, BasicTypeEnum, FunctionType, IntType, VoidType};
 use inkwell::values::{BasicValue, BasicValueEnum, CallSiteValue, FloatValue, FunctionValue, InstructionValue, IntValue, PointerValue};
+use inkwell::debug_info::{
+    DebugInfoBuilder, DWARFSourceLanguage, DWARFEmissionKind
+};
 
 use itertools::{Either, Itertools};
 use lazy_static::lazy_static;
@@ -22,6 +25,7 @@ use std::env;
 use crate::datalsp::*;
 use crate::datair::*;
 use crate::*;
+use crate::dbi::DebugInfo;
 use crate::error::{BaCErr, TrapCode};
 use crate::ml_simplifier::gensym_rand;
 use crate::rslib::search_rs_lib;
@@ -47,7 +51,8 @@ struct CodeGen<'ctx> {
     builder: Builder<'ctx>,
     fpm: PassManager<FunctionValue<'ctx>>,
     namedvars: IndexMap<String, PointerValue<'ctx>>,
-    config: &'ctx CompilerConfig
+    config: &'ctx CompilerConfig,
+    dbi: DebugInfo<'ctx>
 }
 
 
@@ -70,13 +75,47 @@ impl<'ctx> CodeGen<'ctx> {
         fpm.add_reassociate_pass();
 
         fpm.initialize();
+
+        /* DBI */
+        let is_opt = match config.optlv {
+            OptLv::Debug => false,
+            _ => true
+        };
+        let runtime_ver = 2;
+
+        let (dibuilder, cu) = module.create_debug_info_builder(
+            true,  // allow unresolved
+            DWARFSourceLanguage::C,
+            &config.filename(),
+            &config.dirname(),
+            "BAC",
+            is_opt,
+            "",
+            runtime_ver,
+            "",
+            DWARFEmissionKind::Full,
+            0,
+            true,
+            true,
+            "/",
+            ""
+        );
+
+        let dbi = DebugInfo {
+            cu,
+            ty: None,
+            dibuilder,
+            lexblks: vec![]
+        };
+
         Self {
             module,
             builder: context.create_builder(),
             context: &context,
             fpm,
             namedvars: IndexMap::new(),
-            config
+            config,
+            dbi
         }
     }
 

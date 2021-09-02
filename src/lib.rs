@@ -1,7 +1,6 @@
 #![feature(extend_one)]
-#![feature(min_type_alias_impl_trait)]
+#![feature(type_alias_impl_trait)]
 #![feature(destructuring_assignment)]
-#![feature(impl_trait_in_bindings)]
 #![feature(let_chains)]
 
 #![allow(mixed_script_confusables)]
@@ -20,6 +19,7 @@ pub mod codegen;
 pub mod rslib;
 pub mod utils;
 pub mod error;
+pub mod dbi;
 
 use std::path::PathBuf;
 
@@ -57,6 +57,14 @@ pub struct CompilerConfig {
 
 impl CompilerConfig {
     pub fn get_module_name(&self) -> String {
+        self.file.get_path().file_stem().unwrap().to_string_lossy().to_string()
+    }
+
+    pub fn filename(&self) -> String {
         self.file.get_path().file_name().unwrap().to_string_lossy().to_string()
+    }
+
+    pub fn dirname(&self) -> String {
+        self.file.get_path().parent().unwrap().to_string_lossy().to_string()
     }
 }
