@@ -318,13 +318,15 @@ pub fn tokenize(srcfile: &SrcFileInfo) -> Vec<Token> {
         let is_tok_end = found_item.1.1;
 
         if is_tok_end {
-            println!("{}, len:{}", cache, cache.len());
             let tok = gen_token(
                 &cache,
-                srcfile.offset2srcloc(total + 1 - cache.len())
+                srcfile.offset2srcloc(total + 1 - cache.chars().count())
                 ).unwrap();
 
-                // println!("{}", tok);
+            // if tok.name() == "dqstr" {
+            //     println!("{:#?}: len: {}, total: {}", tok, cache.len(), total);
+            // }
+
             tokens.push(tok);
 
             cache.clear();

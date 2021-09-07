@@ -17,5 +17,9 @@ package = "bare-proc-macros"
 path = "proc_macros"
 version = "0.1.0"  # Same as main
 
+[dependencies.rsclib]
+package = "rsc"
+path = "lib/rsclib"
+
 [workspace]
-members = ["proc_macros"]
+members = ["proc_macros", "lib/rsclib"]

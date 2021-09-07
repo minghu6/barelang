@@ -5,6 +5,7 @@ use inkwell::debug_info::{
 
 
 
+#[allow(unused)]
 pub struct DebugInfo<'ctx> {
     // Compile Unit
     pub(crate) cu: DICompileUnit<'ctx>,

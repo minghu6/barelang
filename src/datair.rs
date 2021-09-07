@@ -101,6 +101,7 @@ pub enum BaType {
     U8,
     Float,
     Void,   // Rust Unit,
+    String,
     ExRefFunProto(ExRefFunProto)
 }
 
@@ -312,15 +313,17 @@ impl GetLoc for BaDecVal {
 pub enum ExRefType {
     I64,
     F64,
+    String,
     Void
 }
 
 impl ExRefType {
     pub fn as_type(&self) -> BaType {
-        match self {
-            &Self::F64 => BaType::Float,
-            &Self::I64 => BaType::I64,
-            &Self::Void => BaType::Void
+        match &self {
+            Self::F64 => BaType::Float,
+            Self::I64 => BaType::I64,
+            Self::String => BaType::String,
+            Self::Void => BaType::Void
         }
     }
 }

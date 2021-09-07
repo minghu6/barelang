@@ -8,10 +8,13 @@ use std::fmt;
 use std::rc::Rc;
 
 // use crate::*;
-use crate::gram::*;
+use crate::{VerboseLv, gram::*};
 use super::lexer::*;
 use crate::rules::barelang_gram;
 use super::utils::Stack;
+use crate::{
+    VERBOSE
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 /////// AST
@@ -243,8 +246,10 @@ impl Parser for LL1Parser {
             return Err("empty tokens".to_string());
         }
 
-        println!("tokens: {:#?}\n", tokens);
-        println!("LL(1): ");
+        if unsafe { VERBOSE == VerboseLv::V2 } {
+            println!("tokens: {:#?}\n", tokens);
+            println!("LL(1): ");
+        }
 
         let start_sym = self.gram.start_sym().unwrap();
         let root = Rc::new(RefCell::new(AST::new(&start_sym)));
@@ -263,10 +268,16 @@ impl Parser for LL1Parser {
                     // gramsym_vec rev for stack
                     let states_stack = vec![(root.clone(), Stack::from(gramsym_vec.clone()))];
 
-                    if let Ok(_res) = _ll1_parse(&self, &tokens[..], states_stack) {
-                        res = Ok(_res);
-                        break;
+                    match _ll1_parse(&self, &tokens[..], states_stack) {
+                        Ok(_res) => {
+                            res = Ok(_res);
+                            break;
+                        }
+                        Err(msg) => {
+                            eprintln!("{}", msg);
+                        }
                     }
+
                 }
             }
         }
@@ -314,11 +325,13 @@ fn _ll1_parse(
     let mut i = 0;
 
     while let Some((cur_ast, mut symstr_stack)) = states_stack.pop() {
-        println!(
-            ">>> `{} => ...{}`",
-            cur_ast.as_ref().borrow().sym(),
-            symstr_stack
-        );
+        if unsafe { VERBOSE == VerboseLv::V2 } {
+            println!(
+                ">>> `{} => ...{}`",
+                cur_ast.as_ref().borrow().sym(),
+                symstr_stack
+            );
+        }
 
         // 分支匹配，遇到终结符直接匹配，遇到非终结符就入栈回到起点
         while let Some(right_sym) = symstr_stack.pop() {
@@ -339,19 +352,20 @@ fn _ll1_parse(
             }
 
             if right_sym.is_terminal() {
-                println!("? eat terminal: `{}`", right_sym);
+                if unsafe { VERBOSE == VerboseLv::V2 } {
+                    println!("? eat terminal: `{}`", right_sym);
+                }
 
                 if right_sym == tokens[i].to_gram_sym() {
                     cur_ast.as_ref().borrow_mut().insert_leaf(tokens[i].clone());
 
                     // cosume a token
-                    println!("! eaten token: {:?}", tokens[i]);
+                    if unsafe { VERBOSE == VerboseLv::V2 } {
+                        println!("! eaten token: {:?}", tokens[i]);
+                    }
 
                     i += 1;
-                    // while i < tokenslen && tokens[i].name().ends_with("comment") {
-                    //     println!("...skip comment token: {}", tokens[i]);
-                    //     i += 1;
-                    // }
+
                     if i == tokenslen {
                         break;
                     }
@@ -372,9 +386,12 @@ fn _ll1_parse(
                 // case-3 (return res<ok/error>)
                 // case-4 (error)
 
-                // 为方便起见先处理epsilon转换的情况
+                // case-0 为方便起见先处理epsilon转换的情况
                 if let Some(_) = parser.get_pred_str(&PredSetSym::Epsilon, &right_sym) {
-                    println!("?.? try to skip epsilon: `{}` (token: {})", right_sym, tokens[i]);
+                    if unsafe { VERBOSE == VerboseLv::V2 } {
+                        println!("?.? try to skip epsilon: `{}` (token: {})", right_sym, tokens[i]);
+                    }
+
                     states_stack.push((cur_ast.clone(), symstr_stack.clone()));
 
                     // 实际上是拷贝了整个树
@@ -386,7 +403,9 @@ fn _ll1_parse(
                     if let Ok(_res) = _ll1_parse(parser, new_tokens, new_states_stack) {
                         return Ok(_res);
                     } else {
-                        println!("*<x `{}`", right_sym);
+                        if unsafe { VERBOSE == VerboseLv::V2 } {
+                            println!("*<x `{}`", right_sym);
+                        }
                     }
 
                     // clean env
@@ -410,11 +429,13 @@ fn _ll1_parse(
                         // 在计算predsets时已经把epsilon str的情况单独提出来了
                         let norm_sym_vec = pred_symstr.get_normal().unwrap();
 
-                        println!(
-                            "?>! `{}`: `{}`",
-                            right_sym,
-                            GramSymStr::Str(norm_sym_vec.clone())
-                        );
+                        if unsafe { VERBOSE == VerboseLv::V2 } {
+                            println!(
+                                "?>! `{}`: `{}`",
+                                right_sym,
+                                GramSymStr::Str(norm_sym_vec.clone())
+                            );
+                        }
 
                         states_stack.push((sub_sym_tree, Stack::from(norm_sym_vec.clone())));
 
@@ -428,11 +449,13 @@ fn _ll1_parse(
 
                     while let Some(pred_symstr) = poss_brs_iter.next() {
                         if let GramSymStr::Str(norm_sym_vec) = pred_symstr {
-                            println!(
-                                "?>? `{}`: `{}`",
-                                right_sym,
-                                GramSymStr::Str(norm_sym_vec.clone())
-                            );
+                            if unsafe { VERBOSE == VerboseLv::V2 } {
+                                println!(
+                                    "?>? `{}`: `{}`",
+                                    right_sym,
+                                    GramSymStr::Str(norm_sym_vec.clone())
+                                );
+                            }
 
                             states_stack
                                 .push((sub_sym_tree.clone(), Stack::from(norm_sym_vec.clone())));
@@ -451,7 +474,9 @@ fn _ll1_parse(
                         if let Ok(_res) = _ll1_parse(parser, new_tokens, new_states_stack) {
                             return Ok(_res);
                         } else {
-                            println!("*<x `{}`", right_sym);
+                            if unsafe { VERBOSE == VerboseLv::V2 } {
+                                println!("*<x `{}`", right_sym);
+                            }
                         }
 
                         // clean env
@@ -466,7 +491,9 @@ fn _ll1_parse(
                 // case-3
                 // 如果找不到符合条件的分支，就试一下right_sym是否存在epsilon转换
                 else if let Some(_) = parser.get_pred_str(&PredSetSym::Epsilon, &right_sym) {
-                    println!(" ... skipp epsilon: `{}` (token: {})", right_sym, tokens[i]);
+                    if unsafe { VERBOSE == VerboseLv::V2 } {
+                        println!(" ... skipp epsilon: `{}` (token: {})", right_sym, tokens[i]);
+                    }
                     // just skip epsilon
                 }
                 // case-4
@@ -479,7 +506,9 @@ fn _ll1_parse(
             }
         } // end while
 
-        println!();
+        if unsafe { VERBOSE == VerboseLv::V2 } {
+            println!();
+        }
     }
 
     if i < tokenslastpos {
@@ -534,13 +563,18 @@ mod test {
     use crate::syntax_parser::Parser;
 
     #[test]
-    fn test_synax() {
+    fn test_syntax() {
         use std::path::PathBuf;
         use crate::lexer::{
             SrcFileInfo
         };
         use super::PARSER;
+        use crate::{
+            VERBOSE,
+            VerboseLv
+        };
 
+        unsafe { VERBOSE = VerboseLv::V0 }
 
         let srcfile
         = SrcFileInfo::new(PathBuf::from("./examples/exp0.ba")).unwrap();

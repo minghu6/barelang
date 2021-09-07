@@ -28,7 +28,7 @@ use crate::*;
 use crate::dbi::DebugInfo;
 use crate::error::{BaCErr, TrapCode};
 use crate::ml_simplifier::gensym_rand;
-use crate::rslib::search_rs_lib;
+use crate::rsclib::search_rs_lib;
 
 
 pub fn codegen(config: &CompilerConfig, bin: &BaBin) -> Result<(), Box<dyn Error>> {
@@ -566,6 +566,7 @@ impl<'ctx> CodeGen<'ctx> {
                 self.context.i64_type()
             )),
             &ExRefType::Void => Either::Right(self.context.void_type()),
+            _ => todo!()
         }
     }
 
@@ -580,6 +581,7 @@ impl<'ctx> CodeGen<'ctx> {
             &ExRefType::Void => {
                 None
             },
+            _ => todo!()
         }
     }
 

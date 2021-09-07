@@ -1,9 +1,11 @@
 //! Meta Grammar Processor
 
-use std::{fmt, iter};
+use std::fmt;
 
 use indexmap::{indexset, IndexSet, IndexMap};
 use itertools::Itertools;
+
+use crate::{VERBOSE, VerboseLv};
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Grammar Symbol
@@ -116,6 +118,11 @@ impl fmt::Display for GramSymStr {
 
 /// GramProd: 语法产生式的类型
 pub type GramProd = (GramSym, GramSymStr);
+
+pub fn display_gramprod(prod: &GramProd) {
+    println!("{} -> {}", prod.0, prod.1);
+}
+
 
 pub fn format_gramprod(prod: &GramProd) -> String {
     format!(
@@ -326,6 +333,10 @@ impl Gram {
         all_syms.into_iter().collect()
     }
 
+    pub fn iter(&self) -> indexmap::set::Iter<GramProd> {
+        self.productions.iter()
+    }
+
     /// get start symbol， return None if prods is empty.
     pub fn start_sym(&self) -> Option<&GramSym> {
         match self.productions.get_index(0) {
@@ -369,11 +380,13 @@ impl Gram {
         }
 
         if round > 2 {
-            println!(
-                "{}: calc firstsets additional rounds: {}",
-                self.name(),
-                round - 1
-            );
+            if unsafe { VERBOSE >= VerboseLv::V1 } {
+                println!(
+                    "{}: calc firstsets additional rounds: {}",
+                    self.name(),
+                    round - 1
+                );
+            }
         }
 
         // filter terminal entry
@@ -403,11 +416,13 @@ impl Gram {
             }
         }
         if round > 2 {
-            println!(
-                "{}: calc followsets additional rounds: {}",
-                self.name(),
-                round - 1
-            );
+            if unsafe { VERBOSE >= VerboseLv::V1 } {
+                println!(
+                    "{}: calc followsets additional rounds: {}",
+                    self.name(),
+                    round - 1
+                );
+            }
         }
         foll_sets
     }
@@ -512,6 +527,8 @@ impl Gram {
         }).cloned().collect_vec()
     }
 }
+
+
 
 ///```none
 ///     1.If X is terminal, then FIRST(X) is {X}.
@@ -670,7 +687,7 @@ impl Extend<GramProd> for Gram {
     }
 }
 
-impl iter::IntoIterator for Gram {
+impl std::iter::IntoIterator for Gram {
     type Item = GramProd;
     type IntoIter = indexmap::set::IntoIter<Self::Item>;
 
@@ -696,6 +713,8 @@ impl iter::IntoIterator for Gram {
 #[allow(unused_imports)]
 #[allow(unused_variables)]
 mod test {
+    use itertools::Itertools;
+
     use crate::*;
     use super::Gram;
 
@@ -885,6 +904,55 @@ mod test {
         for (sym, follset) in g3_folls_expected.iter() {
             debug_assert_eq!(g3_follow_sets.get(sym).unwrap(), follset);
         }
+    }
+
+    #[test]
+    fn test_grammar_first_follow_any_set() {
+        use crate::rules::{
+            barelang_gram
+        };
+        use super::{
+            GramSymStr,
+            display_gramprod
+        };
+
+
+        let barelang = barelang_gram();
+
+        let fst_set = barelang.first_sets();
+
+        for prod in barelang
+        .iter() {
+            display_gramprod(prod);
+            let rhstr = &prod.1;
+
+            match rhstr {
+                GramSymStr::Str(rhsym_vec) => {
+                    let fstsym = rhsym_vec.first().unwrap();
+                    let v = fst_set.get(fstsym).unwrap();
+                    let vs = v.iter().map(|vi| {
+                        format!("  | {}\n", vi)
+                    }).join("");
+
+                    println!("{}\n", vs);
+                },
+                _ => {}
+            }
+        }
+
+        // display nonterminal first set
+        // fst_set.iter().filter(|(k, v)| k.is_nonterminal())
+        // .for_each(|(k, v)| {
+        //     print!("{}: ", k);
+
+        //     let item_str = v.iter().map(|vi| {
+        //         format!("\n  | {}", vi)
+        //     }).join("");
+
+        //     println!("{}\n", item_str);
+        // });
+
+        //println!("FIRST: {:#?}", fst_set);
     }
 }
 

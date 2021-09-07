@@ -261,6 +261,7 @@ pub fn barelang_token_matcher_vec() -> TokenMatcherVec {
         slash_block_comment => r"^/\*.*$",
         slash_line_comment  => r"^//.*$",
         sp => r"^[[:space:]]+$",
+        dqstr => r#"^"[\s\S]*"$"#,
 
         paren  => r"[()\[\]{}]",
         sub    => r"-",
@@ -277,7 +278,7 @@ pub fn barelang_token_matcher_vec() -> TokenMatcherVec {
 
 
 ////////////////////////////////////////////////////////////////////////////////
-//// Grammar
+//// Syntax
 
 #[allow(non_snake_case)]
 pub fn barelang_gram() -> Gram {
@@ -305,6 +306,7 @@ pub fn barelang_gram() -> Gram {
         id,
         splid,
         intlit,
+        dqstr,
 
         // single char
         paren,
@@ -383,6 +385,7 @@ pub fn barelang_gram() -> Gram {
 
         Lit:
         | intlit;
+        | dqstr;
     |];
 
 
@@ -418,7 +421,8 @@ mod test {
         matcher = Regex::new(r#"[\[\]{}\(\)]"#).unwrap();
         assert!(matcher.is_match("["));
         assert!(matcher.is_match("}"));
-    assert!(!matcher.is_match("a"));
+        assert!(!matcher.is_match("a"));
+
         matcher = Regex::new(r#"[^[*/]]"#).unwrap();
         assert!(matcher.is_match("a"));
         assert!(!matcher.is_match("*"));
@@ -457,5 +461,15 @@ mod test {
         matcher = Regex::new(r"/\*.*").unwrap();
         assert!(matcher.is_match("/*  asasasa*/"));
         assert!(!matcher.is_match("/ / aaaa"));
+
+        // test double quote string
+        matcher = Regex::new(r#""[\s\S]*""#).unwrap();
+        assert!(matcher.is_match("\"asasas\""));
+        assert!(matcher.is_match("\"你哈， 哈哈哈哈！\n\""));
+        assert!(matcher.is_match("\"你哈， 哈哈哈哈！\n
+
+这是真的好
+        \""));
+
     }
 }

@@ -19,6 +19,13 @@ lazy_static! {
                 ExRefType::I64
             ],
             ret: ExRefType::I64
+        },
+        "prints" => ExRefFunProto {
+            name: "prints".to_owned(),
+            params: vec![
+                ExRefType::String
+            ],
+            ret: ExRefType::String
         }
     };
 }

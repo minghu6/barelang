@@ -16,7 +16,7 @@ pub mod ml_simplifier;
 pub mod datalsp;
 pub mod datair;
 pub mod codegen;
-pub mod rslib;
+pub mod rsclib;
 pub mod utils;
 pub mod error;
 pub mod dbi;
@@ -32,6 +32,7 @@ pub use proc_macros::{
 
 make_vec_macro_rules!(vecdeq , std::collections::VecDeque, push_back);
 
+pub static mut VERBOSE: VerboseLv = VerboseLv::V0;
 
 ///////////////////////////////////////////////////////////////////////////
 //// Compiler Config
@@ -45,6 +46,13 @@ pub enum TargetType {
     Bin,
     ReLoc,
     DyLib
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum VerboseLv {
+    V0,
+    V1,
+    V2
 }
 
 pub struct CompilerConfig {

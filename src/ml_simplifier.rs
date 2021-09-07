@@ -11,7 +11,7 @@ use indexmap::{IndexMap, indexmap};
 
 use crate::datalsp::*;
 use crate::datair::*;
-use crate::rslib::search_rs_lib;
+use crate::rsclib::search_rs_lib;
 use crate::utils::{
     gen_counter, CounterType
 };
