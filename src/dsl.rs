@@ -80,7 +80,10 @@ macro_rules! grammar {
                      };
 
                     _grammar.insert_prod(
-                        ($name.clone(), gramsymstr)
+                        $crate::gram::GramProd {
+                            lfsym: $name.clone(),
+                            rhstr: gramsymstr
+                        }
                     );
                 )+
             )+

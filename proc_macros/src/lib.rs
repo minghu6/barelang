@@ -203,6 +203,59 @@ pub fn make_token_matcher_rules(input: TokenStream) -> TokenStream {
     TokenStream::from(token_stream)
 }
 
+////////////////////////////////////////////////////////////////////////////////
+//// Define New Custom Error
+struct MakeSimpleError {
+    name: Ident
+}
+
+impl Parse for MakeSimpleError {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let name = input.parse()?;
+
+        Ok(Self { name })
+    }
+}
+
+#[proc_macro]
+pub fn make_simple_error_rules(input: TokenStream) -> TokenStream {
+    let MakeSimpleError {
+        name
+    } = parse_macro_input!(input as MakeSimpleError);
+
+    TokenStream::from(quote! {
+        pub struct #name {
+            msg: String
+        }
+
+        impl std::fmt::Display for #name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "{}", self.msg)
+            }
+        }
+
+        impl std::fmt::Debug for #name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "{}", self)
+            }
+        }
+
+        impl std::error::Error for #name {}
+
+        impl #name {
+            pub fn new_box_err(msg: &str) -> Box<dyn Error> {
+                Box::new(Self::new(msg))
+            }
+
+            pub fn new(msg: &str) -> Self {
+                Self {
+                    msg: msg.to_string()
+                }
+            }
+        }
+
+    })
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 /////// Invoke Matcher

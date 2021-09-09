@@ -2,6 +2,7 @@
 #![feature(type_alias_impl_trait)]
 #![feature(destructuring_assignment)]
 #![feature(let_chains)]
+#![feature(option_get_or_insert_default)]
 
 #![allow(mixed_script_confusables)]
 #![allow(incomplete_features)]
@@ -27,7 +28,8 @@ use lexer::SrcFileInfo;
 pub use proc_macros::{
     make_vec_macro_rules,
     make_char_matcher_rules,
-    make_token_matcher_rules
+    make_token_matcher_rules,
+    make_simple_error_rules
 };
 
 make_vec_macro_rules!(vecdeq , std::collections::VecDeque, push_back);

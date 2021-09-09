@@ -254,6 +254,7 @@ pub fn barelang_lexdfamap() -> LexDFAMapType {
 
 pub fn barelang_token_matcher_vec() -> TokenMatcherVec {
     token_recognizer! {
+        f      => "^f$",
         id     => "^[[:alpha:]_][[:alnum:]_]*$",
         splid  => "^[[:alpha:]_][[:alnum:]_]*#$",
         intlit => r"^[+|-]?(([0-9]+)|(0x[0-9a-f]+))$",
@@ -263,7 +264,9 @@ pub fn barelang_token_matcher_vec() -> TokenMatcherVec {
         sp => r"^[[:space:]]+$",
         dqstr => r#"^"[\s\S]*"$"#,
 
-        paren  => r"[()\[\]{}]",
+        lparen => r"[(]",
+        rparen => r"[)]",
+        brace  => r"[\{\}]",
         sub    => r"-",
         add    => r"\+",
         mul    => r"\*",
@@ -294,10 +297,8 @@ pub fn barelang_gram() -> Gram {
         Lit,
         Id,
         Expr1,
-        FunCall,
         ExprList,
-        VariableDeclarator,
-        VariableInitializer
+        ExprList1
     };
     // 终结符全部小写 (假装是没有分部的lower camel case)
     declare_terminal! {
@@ -309,7 +310,12 @@ pub fn barelang_gram() -> Gram {
         dqstr,
 
         // single char
-        paren,
+        lparen,    // ()
+        rparen,
+        //bracket,  // []
+        brace,    // {}
+        f,
+
         sub,
         add,
         mul,
@@ -330,7 +336,7 @@ pub fn barelang_gram() -> Gram {
         | BlockStmts;
 
         Block:
-        | paren BlockStmts paren;
+        | brace BlockStmts brace;
 
         BlockStmts:
         | BlockStmt BlockStmts;
@@ -338,7 +344,7 @@ pub fn barelang_gram() -> Gram {
 
         BlockStmt:
         | Stmt;
-        | VariableDeclarator;
+        | f id lparen ExprList rparen eq Block;
 
         Stmt:
         | semi;
@@ -346,24 +352,19 @@ pub fn barelang_gram() -> Gram {
 
         Expr:
         | Pri Expr1;
-        | FunCall;
-
-        VariableDeclarator:
-        | id eq VariableInitializer;
-
-        VariableInitializer:
-        | Expr;
 
         Expr1:
-        | BOp Pri Expr1;  // 中缀表达式仅限基本操作符, 这是为了方便起见
+        | BOp Pri Expr1;           // 中缀表达式仅限基本操作符, 这是为了方便起见
+        | lparen ExprList rparen;  // FunCall
+        | eq Expr;                 // Assign
         | ε;
 
-        FunCall:
-        | Id paren ExprList paren;
-
         ExprList:
-        | Expr;
-        | Expr comma ExprList;
+        | Expr ExprList1;
+        | ε;
+
+        ExprList1:
+        | comma Expr ExprList1;
         | ε;
 
         BOp:
@@ -377,7 +378,7 @@ pub fn barelang_gram() -> Gram {
         Pri:
         | Lit;
         | Id;
-        | paren Expr paren;
+        | lparen Expr rparen;
 
         Id:
         | id;

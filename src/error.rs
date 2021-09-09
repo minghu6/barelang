@@ -1,59 +1,53 @@
 use std::error::Error;
-use std::fmt;
 
+use crate::make_simple_error_rules;
 use crate::datair::BaId;
 
-#[derive(Debug)]
-pub struct BaCErr {
-    msg: String
-}
+////////////////////////////////////////////////////////////////////////////////
+//// Rule Engine Error
 
-impl fmt::Display for BaCErr {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.msg)
-    }
-}
-
-impl Error for BaCErr {}
+make_simple_error_rules!(RuleErr);
 
 
-impl BaCErr {
-    pub fn new_box_err(msg: &str) -> Box<dyn Error> {
-        Box::new(Self::new(msg))
-    }
+////////////////////////////////////////////////////////////////////////////////
+//// Bare Lang Compiler Error
 
-    pub fn new(msg: &str) -> Self {
-        Self {
-            msg: msg.to_string()
-        }
-    }
-}
+make_simple_error_rules!(BaCErr);
 
 
 #[derive(Debug)]
 pub enum TrapCode<'a> {
+    /* BaCErr */
     UnresolvedSymbol(&'a BaId),
     ToBaiscTypeOnVoid,
-    UnsupportedBopOperand
+    UnsupportedBopOperand,
+
+    /* RuleErr */
+    AmbigousLLRule(String)
 }
 
 impl<'a> TrapCode<'a> {
     pub fn emit_box_err(&self) -> Box<dyn Error> {
-        match self {
-            &Self::UnresolvedSymbol(id) => {
+        match &self {
+            Self::UnresolvedSymbol(id) => {
                 BaCErr::new_box_err(
                     format!(
                         "Unresolved Symbol: {:?}", id
                     ).as_str()
                 )
             },
-            &Self::ToBaiscTypeOnVoid => {
+            Self::ToBaiscTypeOnVoid => {
                 BaCErr::new_box_err(
                     format!(
                         "{:?}", self
                     ).as_str()
                 )
             },
+            Self::AmbigousLLRule(msg) => {
+                RuleErr::new_box_err(
+                    msg
+                )
+            }
             _ => {
                 BaCErr::new_box_err(
                     format!(
