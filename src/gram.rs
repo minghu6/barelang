@@ -798,21 +798,27 @@ impl Gram {
         dup_dt
     }
 
-
-    pub fn do_check(&self, fstsets: &FstSets, follsets: &FollSets) -> Result<(), Box<dyn Error>> {
-        let dup_dt = self.duplicate_dt(fstsets, follsets);
+    pub(crate) fn do_check1(&self, fstsets: &FstSets, follsets: &FollSets) -> Result<(), Box<dyn Error>> {
+        let dup_dt = self.duplicate_dt(&fstsets, &follsets);
 
         let mut s = String::new();
 
         if dup_dt.len() > 0 {
             writeln!(&mut s, "Duplicated LL Rule:\n")?;
 
-            writeln!(&mut s, "{}", display_dt(&dup_dt, fstsets, follsets)?)?;
+            writeln!(&mut s, "{}", display_dt(&dup_dt, &fstsets, &follsets)?)?;
 
             return Err(TrapCode::AmbigousLLRule(s).emit_box_err())
         }
 
         Ok(())
+    }
+
+    pub fn do_check(&self) -> Result<(), Box<dyn Error>> {
+        let fstsets = self.first_sets();
+        let follsets = self.follow_sets(&fstsets);
+
+        self.do_check1(&fstsets, &follsets)
     }
 }
 
@@ -859,7 +865,7 @@ mod test {
         // let dt = barelang.derivation_tree();
         // println!("DT: {}", display_dt(&dt, &fstsets, &follsets).unwrap());
 
-        match barelang.do_check(&fstsets, &follsets) {
+        match barelang.do_check1(&fstsets, &follsets) {
             Ok(()) => {},
             Err(err) => {
                 println!("{}", err);

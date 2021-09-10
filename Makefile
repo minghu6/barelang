@@ -5,12 +5,10 @@ build:
 
 copybin:
 	@ cp ./target/debug/${BARE_COMPILER} .
-	# @ ./${BARE_COMPILER}
 
 getbac: build copybin
 
 genlib:
-	@ # @ rustc --crate-type cdylib lib/libbare.rs -o libbare.so
 	@ cargo build -p rsc --release
 	@ cp ./target/release/librsc.so .
 
@@ -26,4 +24,4 @@ dump:
 
 .PHONY: clean
 clean:
-	@ rm -f *.so *.o ${BARE_COMPILER} main *.out
+	@ rm -f *.so *.o ${BARE_COMPILER} main *.out *.d *.ll

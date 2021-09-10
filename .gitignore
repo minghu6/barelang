@@ -38,3 +38,6 @@ main
 bac
 tmp
 __barelang_output*
+
+# llvm output
+*.ll

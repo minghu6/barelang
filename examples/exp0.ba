@@ -20,6 +20,7 @@ t3=1+2-3;
 //rs#printi(t2);
 //rs#printi(t4);
 //rs#printi(88);
-
-
+rs#prints(s0);
+rs#prints(s1);
 // t1 = [1 2 3 4];
+//a=3;

@@ -10,6 +10,7 @@ use std::{
 };
 
 use indexmap::IndexMap;
+use regex::NoExpand;
 
 use crate::utils::Stack;
 use crate::datair::{
@@ -24,8 +25,9 @@ use crate::datair::{
     BaLit, BaSplId, BaBOp
 };
 
+
 ////////////////////////////////////////////////////////////////////////////////
-//// Bare Language Data Structure
+//// LspId
 
 #[derive(Debug, Clone)]
 pub struct LspId {
@@ -52,6 +54,9 @@ impl LspId {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+//// LspPri
+
 #[derive(Debug, Clone)]
 pub enum LspPri {
     Lit(BaLit),
@@ -75,10 +80,38 @@ impl GetLoc for LspPri {
     }
 }
 
+impl LspPri {
+    pub fn to_lspid(&self) -> Option<Rc<RefCell<LspId>>> {
+        if let Self::Id(id_rc) = self {
+            Some(id_rc.clone())
+        }
+        else {
+            None
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//// LspDeclare
+
+#[derive(Debug)]
+pub struct LspDeclare {
+    pub id: LspId,
+    pub val: LspExpr
+}
+
+impl GetLoc for LspDeclare {
+    fn get_loc(&self) -> SrcLoc {
+        self.id.loc.clone()
+    }
+}
+
+
 #[derive(Debug)]
 pub enum LspExpr {
     Pri(LspPri),
     FunCall(LspFunCall),
+    Declare(Rc<LspDeclare>),  // Rc to avoid cycle dependency
 
     // Pri is just a special case of CompPri, We do for flatten structure
     CompPri(LspCompPriTN),
@@ -93,6 +126,9 @@ impl GetLoc for LspExpr  {
             },
             Self::FunCall(funcall) => {
                 funcall.get_loc()
+            },
+            Self::Declare(declare) => {
+                declare.get_loc()
             },
             Self::Pri(pri) => {
                 pri.get_loc()
@@ -213,7 +249,6 @@ impl GetLoc for LspFunCall {
 #[derive(Debug)]
 pub enum LspBlockStmt {
     Stmt(LspStmt),
-    Declare(LspId, LspExpr),
 }
 
 #[derive(Debug, Clone)]

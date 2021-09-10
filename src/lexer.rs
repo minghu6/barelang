@@ -3,7 +3,7 @@ use itertools::Itertools;
 use regex::Regex;
 use lazy_static::lazy_static;
 
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::path::PathBuf;
 use std::{fmt, vec};
 use std::fs;
@@ -57,7 +57,7 @@ impl Token {
 
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.to_gram_sym(), self.value())
+        write!(f, "{}: {} {}", self.to_gram_sym(), self.value(), self.loc())
     }
 }
 
@@ -69,6 +69,7 @@ impl fmt::Display for Token {
 
 /// SrcFileInfo
 #[allow(dead_code)]
+#[derive(PartialEq, Eq)]
 pub struct SrcFileInfo {
     /// Source file path
     path: PathBuf,
@@ -134,6 +135,12 @@ impl SrcFileInfo {
     }
 }
 
+impl fmt::Debug for SrcFileInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SrcFileInfo").field("path", &self.path).finish()
+    }
+}
+
 
 #[derive(Clone)]
 pub struct SrcLoc {
@@ -151,6 +158,12 @@ impl SrcLoc {
 }
 
 impl Debug for SrcLoc {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
+impl Display for SrcLoc {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "({}, {})", self.ln, self.col)
     }

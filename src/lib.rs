@@ -39,16 +39,27 @@ pub static mut VERBOSE: VerboseLv = VerboseLv::V0;
 ///////////////////////////////////////////////////////////////////////////
 //// Compiler Config
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum OptLv {
     Debug,
     Opt(usize)
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum TargetType {
     Bin,
     ReLoc,
-    DyLib
+    DyLib,
 }
+
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum EmitType {
+    LLVMIR,
+    Asm,
+    Obj
+}
+
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum VerboseLv {
@@ -57,9 +68,23 @@ pub enum VerboseLv {
     V2
 }
 
+impl From<usize> for VerboseLv {
+    fn from(i: usize) -> Self {
+        match i {
+            0 => Self::V0,
+            1 => Self::V1,
+            2 => Self::V2,
+            _ => Self::V0
+        }
+    }
+}
+
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct CompilerConfig {
     pub optlv: OptLv,
     pub target_type: TargetType,
+    pub emit_type: EmitType,
     pub file: SrcFileInfo,
     pub objpath: PathBuf
 }

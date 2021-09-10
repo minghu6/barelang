@@ -23,9 +23,9 @@ lazy_static! {
         "prints" => ExRefFunProto {
             name: "prints".to_owned(),
             params: vec![
-                ExRefType::String
+                ExRefType::Str
             ],
-            ret: ExRefType::String
+            ret: ExRefType::Str
         }
     };
 }

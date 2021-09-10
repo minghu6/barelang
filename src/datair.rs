@@ -53,6 +53,11 @@ pub struct BaFloat {
     pub loc: SrcLoc
 }
 
+#[derive(Debug, Clone)]
+pub struct BaStr {
+    pub val: String,
+    pub loc: SrcLoc
+}
 
 ///
 /// Default Int Type [reference this](https://github.com/rust-lang/rfcs/blob/master/text/0212-restore-int-fallback.md#rationale-for-the-choice-of-defaulting-to-i32)
@@ -64,16 +69,18 @@ pub enum BaLit {
     I32(BaI32),
     U8(BaU8),
     Float(BaFloat), // 64 bit float
+    Str(BaStr)      // Unicode String
 }
 
 impl ToBaType for BaLit {
     fn to_batype(&self) -> BaType {
-        match self {
-            &Self::Float(_) => BaType::Float,
-            &Self::I32(_) => BaType::I32,
-            &Self::I64(_) => BaType::I64,
-            &Self::USize(_) => BaType::USize,
-            &Self::U8(_) => BaType::U8
+        match &self {
+            Self::Float(_) => BaType::Float,
+            Self::I32(_) => BaType::I32,
+            Self::I64(_) => BaType::I64,
+            Self::USize(_) => BaType::USize,
+            Self::U8(_) => BaType::U8,
+            Self::Str(_) => BaType::Str
         }
     }
 }
@@ -85,7 +92,8 @@ impl GetLoc for BaLit {
             Self::I32(i32) => i32.loc.clone(),
             Self::I64(i64) => i64.loc.clone(),
             Self::USize(u) => u.loc.clone(),
-            Self::U8(u8) => u8.loc.clone()
+            Self::U8(u8) => u8.loc.clone(),
+            Self::Str(str) => str.loc.clone()
         }
     }
 }
@@ -101,14 +109,14 @@ pub enum BaType {
     U8,
     Float,
     Void,   // Rust Unit,
-    String,
+    Str,
     ExRefFunProto(ExRefFunProto)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 //// BaPriVal
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum BaPriVal {
     Lit(BaLit),
     Id(BaId),
@@ -143,7 +151,7 @@ impl GetLoc for BaPriVal {
 ////////////////////////////////////////////////////////////////////////////////
 //// BaFunCall
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BaFunCall {
     pub name: BaId,
     pub args: Vec<BaPriVal>
@@ -252,14 +260,14 @@ pub enum BaStmt {
     FunCall(BaFunCall)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BaDeclare {
     pub name: BaId,
     pub value: BaDecVal
 }
 
 /// Declared Value <=> LspExpr
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum BaDecVal {
     PriVal(BaPriVal),
     FunCall(BaFunCall),
@@ -313,7 +321,7 @@ impl GetLoc for BaDecVal {
 pub enum ExRefType {
     I64,
     F64,
-    String,
+    Str,
     Void
 }
 
@@ -322,7 +330,7 @@ impl ExRefType {
         match &self {
             Self::F64 => BaType::Float,
             Self::I64 => BaType::I64,
-            Self::String => BaType::String,
+            Self::Str => BaType::Str,
             Self::Void => BaType::Void
         }
     }

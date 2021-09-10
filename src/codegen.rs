@@ -5,12 +5,22 @@ use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::{Linkage, Module};
 use inkwell::passes::{PassManager, PassManagerBuilder};
-use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
-use inkwell::types::{AnyTypeEnum, BasicType, BasicTypeEnum, FunctionType, IntType, VoidType};
+use inkwell::targets::{
+    CodeModel,
+    InitializationConfig,
+    RelocMode, Target, TargetMachine, FileType
+};
+use inkwell::types::{
+    AnyTypeEnum, BasicType, BasicTypeEnum, FunctionType, IntType, VoidType,
+    PointerType
+};
 use inkwell::values::{BasicValue, BasicValueEnum, CallSiteValue, FloatValue, FunctionValue, InstructionValue, IntValue, PointerValue};
+use inkwell::AddressSpace;
+
 use inkwell::debug_info::{
     DebugInfoBuilder, DWARFSourceLanguage, DWARFEmissionKind
 };
+
 
 use itertools::{Either, Itertools};
 use lazy_static::lazy_static;
@@ -144,13 +154,25 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.end_main_ok();
 
-        self.gen_target(self.config.objpath.clone())
+        self.gen_file()
     }
 
     ///////////////////////////////////////////////////////////////////////////
     //// Target Generation
 
-    fn gen_target(&self, output: PathBuf) -> Result<(), Box<dyn Error>> {
+    fn gen_file(&self) -> Result<(), Box<dyn Error>> {
+        match self.config.emit_type {
+            EmitType::Obj => {
+                self.emit_obj()
+            },
+            EmitType::LLVMIR => {
+                self.emit_llvmir()
+            },
+            _ => todo!()
+        }
+    }
+
+    fn emit_obj(&self) -> Result<(), Box<dyn Error>> {
         Target::initialize_native(&InitializationConfig::default())?;
 
         let triple = TargetMachine::get_default_triple();
@@ -169,9 +191,19 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.module.set_data_layout(&machine.get_target_data().get_data_layout());
 
-        machine.write_to_file(&self.module, inkwell::targets::FileType::Object, Path::new(&output))?;
+        machine.write_to_file(
+            &self.module,
+            FileType::Object,
+            &self.config.objpath
+        )?;
 
         Ok(())
+    }
+
+    fn emit_llvmir(&self) -> Result<(), Box<dyn Error>> {
+        self.module
+        .print_to_file(&self.config.objpath)
+        .map_err(|llvmstr| BaCErr::new_box_err(llvmstr.to_str().unwrap()))
     }
 
     ///////////////////////////////////////////////////////////////////////////
@@ -188,7 +220,10 @@ impl<'ctx> CodeGen<'ctx> {
     fn end_main(&self, rtn: IntValue<'ctx>) {
         self.builder.build_return(Some(&rtn));
         let main_fn = self.module.get_function("main").unwrap();
-        self.fpm.run_on(&main_fn);
+
+        if self.config.optlv != OptLv::Debug {
+            self.fpm.run_on(&main_fn);
+        }
     }
 
     fn end_main_ok(&self) {
@@ -259,6 +294,37 @@ impl<'ctx> CodeGen<'ctx> {
                         ptr = self.builder.build_alloca(i32_t, &gensym_rand());
                         self.builder.build_store(ptr, value);
 
+                    },
+                    BaLit::Str(bastr) => {
+                        let strval = &bastr.val;
+                        let i8_t = self.context.i8_type();
+                        let i64_t = self.context.i64_type();
+                        let i8ptr_t = i8_t.ptr_type(AddressSpace::Generic);
+
+                        let cchars
+                        = strval
+                        .as_bytes()
+                        .into_iter()
+                        .map(|x| i8_t.const_int(*x as u64, false))
+                        .collect_vec();
+
+                        let cchars_len
+                        = i64_t.const_int(
+                            (strval.len() as usize).try_into().unwrap(),
+                            false
+                        );
+
+                        let cchars_ptr
+                        = self.builder.build_array_alloca(i8ptr_t, cchars_len, &gensym_rand());
+                        let cchars_val = i8_t.const_array(&cchars[..]);
+
+                        self.builder.build_store(cchars_ptr, cchars_val);
+
+                        ptr = self.builder.build_alloca(
+                            i8ptr_t.ptr_type(AddressSpace::Generic),
+                            &gensym_rand()
+                        );
+                        self.builder.build_store(ptr, cchars_ptr);
                     },
                     _ => unreachable!()
                 }
@@ -558,38 +624,73 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     fn exref2retty(&self, ty: &ExRefType) -> Either<BasicTypeEnum<'ctx>, VoidType<'ctx>> {
-        match ty {
-            &ExRefType::F64  => Either::Left(BasicTypeEnum::<'ctx>::FloatType(
+        match &ty {
+            ExRefType::F64  => Either::Left(BasicTypeEnum::<'ctx>::FloatType(
                 self.context.f64_type()
             )),
-            &ExRefType::I64  => Either::Left(BasicTypeEnum::<'ctx>::IntType(
+            ExRefType::I64  => Either::Left(BasicTypeEnum::<'ctx>::IntType(
                 self.context.i64_type()
             )),
-            &ExRefType::Void => Either::Right(self.context.void_type()),
-            _ => todo!()
+            ExRefType::Void => Either::Right(self.context.void_type()),
+            ExRefType::Str => Either::Left(BasicTypeEnum::<'ctx>::PointerType(
+                self.context.i8_type().ptr_type(AddressSpace::Generic)
+            ))
         }
     }
 
     fn exrefty2basicty(&self, ty: &ExRefType) -> Option<BasicTypeEnum<'ctx>> {
-        match ty {
-            &ExRefType::F64  => Some(BasicTypeEnum::<'ctx>::FloatType(
+        match &ty {
+            ExRefType::F64  => Some(BasicTypeEnum::<'ctx>::FloatType(
                 self.context.f64_type()
             )),
-            &ExRefType::I64  => Some(BasicTypeEnum::<'ctx>::IntType(
+            ExRefType::I64  => Some(BasicTypeEnum::<'ctx>::IntType(
                 self.context.i64_type()
             )),
-            &ExRefType::Void => {
+            ExRefType::Void => {
                 None
             },
-            _ => todo!()
+            ExRefType::Str => {
+                Some(BasicTypeEnum::<'ctx>::PointerType(
+                    self.context.i8_type().ptr_type(AddressSpace::Const)
+                ))
+            }
         }
     }
+
+    // #[inline]
+    // fn i64_t(&self) -> IntType {
+    //     self.context.i64_type()
+    // }
+
+    // #[inline]
+    // fn i8_t(&self) -> IntType {
+    //     self.context.i8_type()
+    // }
+
+    // #[inline]
+    // fn i8ptr_t(&self) -> PointerType {
+    //     self.i8_t().ptr_type(AddressSpace::Generic)
+    // }
+
+    // #[inline]
+    // fn i8ptr_const_t(&self) -> PointerType {
+    //     self.i8_t().ptr_type(AddressSpace::Const)
+    // }
+}
+
+
+
+
+impl<'ctx> CodeGen<'ctx> {
 
 }
 
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Helper Function
+
+
+
 
 
 

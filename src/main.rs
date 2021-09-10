@@ -17,19 +17,23 @@ use clap::{
     clap_app
 };
 
+use bac::rules::{
+    barelang_gram
+};
 use bac::lexer::{
     SrcFileInfo
 };
 use bac::syntax_parser::{
-    PARSER, Parser
+    Parser, LL1Parser
 };
 use bac::semantic_analyzer::{
      analyze_semantic
 };
-use bac::codegen::{codegen};
-use bac::error::{
-    BaCErr
+use bac::codegen::{
+    codegen
 };
+
+use bac::error::BaCErr;
 use bac::*;
 
 fn unique_suffix() -> String {
@@ -47,19 +51,20 @@ fn main() -> Result<(), Box<dyn Error>> {
         (author: "minghu6")
         (about: "Bare Language Compiler")
         (@arg FILE: +required "input source file (exp *.ba)")
-        (@arg target_type: -t --target_type +takes_value "[bin|dylib|reloc]")
+        (@arg target_type: -t --target_type +takes_value "[bin|dylib|reloc] default: bin")
+        (@arg emit_type: -e --emit +takes_value "[llvm-ir|asm|obj] default: obj")
         (@arg O2: -O "Optimized code")
+        (@arg Verbose: -V --verbose +takes_value "verbose level: 0, 1, 2")
         (@arg output: -o --output +takes_value "object file output path")
+        (@arg dryrun: --dry "DRY RUN print config")
+
     ).get_matches();
 
     /* Build File && Output */
     let source_file_path = matches.value_of("FILE").unwrap();
-    let mut tmp_out_fn = String::from("__barelang_output");
-    tmp_out_fn.push_str(&unique_suffix());
 
     let input = PathBuf::from(source_file_path);
     let file = SrcFileInfo::new(input)?;
-    let objpath = PathBuf::from(tmp_out_fn.clone());
 
     /* Build Target Type */
     let target_type
@@ -75,52 +80,126 @@ fn main() -> Result<(), Box<dyn Error>> {
         TargetType::Bin
     };
 
+    /* Emit Type */
+    let emit_type
+    = if let Some(emit_type) = matches.value_of("emit_type") {
+        match emit_type {
+            "obj" => {
+                EmitType::Obj
+            },
+            "asm" => {
+                EmitType::Asm
+            },
+            "llvm-ir" => {
+                EmitType::LLVMIR
+            },
+            _ => unimplemented!()
+        }
+    }
+    else {
+        EmitType::Obj
+    };
+
     /* Build OptLv */
     let optlv
-    = if let Some(_) = matches.value_of("O2") {
+    = if matches.is_present("O2") {
         OptLv::Opt(2)
     }
     else {
         OptLv::Debug
     };
 
-
-
-    let compiler_config = CompilerConfig {
-        optlv,
-        target_type,
-        file,
-        objpath
-    };
-
-    compile(&compiler_config)?;
+    /* Build Verbose */
+    unsafe {
+        VERBOSE =
+        if let Some(vs) = matches.value_of("Verbose") {
+            VerboseLv::from(vs.parse::<usize>()?)
+        }
+        else {
+            VerboseLv::V0
+        }
+    }
 
     let bare_home_str = env::var("BARE_HOME").unwrap_or(".".to_string());
     let bare_home = fs::canonicalize(Path::new(
         &bare_home_str
     ))?;
+    let lib_path = bare_home.join("librsc.so");
 
-    let lib_path = bare_home.join("libbare.so");
+    match emit_type {
+        EmitType::LLVMIR => {
+            let output = match matches.value_of("output") {
+                Some(output) => output,
+                None => "a.ll"
+            };
+            let objpath = PathBuf::from(output);
 
-    let output = match matches.value_of("output") {
-        Some(output) => output,
-        None => "a.out"
-    };
+            let compiler_config = CompilerConfig {
+                optlv,
+                target_type,
+                file,
+                emit_type,
+                objpath
+            };
 
-    //gcc output.o libbare.so -Xlinker -rpath ./ -o main
-    let gcc_link_st = Command::new("gcc")
-    .arg(tmp_out_fn.as_str())
-    .arg(lib_path.to_str().unwrap())
-    .arg("-Xlinker")
-    .arg("-rpath")
-    .arg(bare_home_str)
-    .arg("-o")
-    .arg(output)
-    .status()?;
+            // dry run point
+            if matches.is_present("dryrun") {
+                println!("{:#?}", compiler_config);
+                return Ok(())
+            }
 
-    assert!(gcc_link_st.success(), "gcc link {}", gcc_link_st);
+            compile(&compiler_config)?;
+        },
+        EmitType::Obj => {
+            match target_type {
+                TargetType::Bin => {
+                    let mut tmp_out_fn = String::from("__barelang_output");
+                    tmp_out_fn.push_str(&unique_suffix());
+                    let objpath = PathBuf::from(tmp_out_fn.clone());
 
-    fs::remove_file(tmp_out_fn)?;
+                    let compiler_config = CompilerConfig {
+                        optlv,
+                        target_type,
+                        file,
+                        emit_type,
+                        objpath
+                    };
+
+                    // dry run point
+                    if matches.is_present("dryrun") {
+                        println!("{:#?}", compiler_config);
+                        return Ok(())
+                    }
+
+                    compile(&compiler_config)?;
+
+                    let output = match matches.value_of("output") {
+                        Some(output) => output,
+                        None => "a.out"
+                    };
+
+                    // gcc output.o libbare.so -Xlinker -rpath ./ -o main
+                    let gcc_link_st = Command::new("gcc")
+                    .arg(tmp_out_fn.as_str())
+                    .arg(lib_path.to_str().unwrap())
+                    .arg("-Xlinker")
+                    .arg("-rpath")
+                    .arg(bare_home_str)
+                    .arg("-o")
+                    .arg(output)
+                    .status()?;
+
+                    assert!(gcc_link_st.success(), "gcc link {}", gcc_link_st);
+
+                    fs::remove_file(tmp_out_fn)?;
+                },
+                _ => todo!()
+            }
+
+        },
+        _ => todo!()
+    }
+
 
     Ok(())
 }
@@ -128,14 +207,28 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 /// Compile source code string
 pub fn compile(config: &CompilerConfig) -> Result<(), Box<dyn Error>> {
-    match (*PARSER).parse(&config.file) {
+    let gram = barelang_gram();
+    gram.do_check()?;
+
+    let parser = LL1Parser::new(gram);
+
+    match parser.parse(&config.file) {
         Ok(ast) => {
-            println!("AST:\n{}", ast.as_ref().borrow());
-            let ml = analyze_semantic(ast);
-            println!("ML:\n{:#?}", ml);
+            if unsafe { VERBOSE >= VerboseLv::V1 } {
+                println!("AST:\n{}", ast.as_ref().borrow());
+            }
+
+            let ml = analyze_semantic(ast)?;
+            if unsafe { VERBOSE >= VerboseLv::V2 } {
+                println!("ML:\n{:#?}", ml);
+            }
+
             let mut mlslf = MLSimplifier::new();
             let bin = mlslf.simplify_ml(ml);
-            println!("BaBin:\n{:#?}", bin);
+            if unsafe { VERBOSE >= VerboseLv::V2 } {
+                println!("BaBin:\n{:#?}", bin);
+            }
+
             codegen(&config, &bin)?;
             Ok(())
         },

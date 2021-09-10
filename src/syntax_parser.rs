@@ -1,7 +1,6 @@
 //! Synax Parser: translates directly into synax tree based on rule.rs.
 
 use itertools::Itertools;
-use lazy_static::lazy_static;
 
 use std::cell::RefCell;
 use std::fmt;
@@ -11,7 +10,6 @@ use std::rc::Rc;
 use crate::VerboseLv;
 use crate::gram::*;
 use super::lexer::*;
-use crate::rules::barelang_gram;
 use super::utils::Stack;
 use crate::{
     VERBOSE
@@ -265,11 +263,6 @@ impl Parser for LL1Parser {
                 unreachable!()
             }
         }
-        else {
-            println!("token0: {}", tokens[0].to_pred_set_sym());
-            println!("{}", self.prediction_sets);
-            unreachable!()
-        }
 
         res
     }
@@ -396,7 +389,10 @@ fn ll1_parse(
                     }
                 }
                 else {
-
+                    return Err(format!(
+                        "Unexpected token {} for derive {}",
+                        tokens[i], right_sym
+                    ));
                 }
             }
         } // end while rhsymstr
@@ -417,38 +413,38 @@ fn ll1_parse(
 }
 
 
-lazy_static! {
-    pub static ref PARSER: LL1Parser = LL1Parser::new(barelang_gram());
-}
-
-
 #[cfg(test)]
 mod test {
-    use crate::syntax_parser::Parser;
-
     #[test]
     fn test_syntax() {
         use std::path::PathBuf;
+        use crate::rules::{
+            barelang_gram
+        };
         use crate::lexer::{
             SrcFileInfo
         };
-        use super::PARSER;
+        use crate::syntax_parser::{
+            Parser, LL1Parser
+        };
         use crate::{
             VERBOSE,
             VerboseLv
         };
 
-        unsafe { VERBOSE = VerboseLv::V2 }
+        unsafe { VERBOSE = VerboseLv::V0 }
 
         let srcfile
         = SrcFileInfo::new(PathBuf::from("./examples/exp0.ba")).unwrap();
 
-        match (*PARSER).parse(&srcfile) {
+        let parser = LL1Parser::new(barelang_gram());
+
+        match parser.parse(&srcfile) {
             Ok(res) => {
                 println!("{}", res.as_ref().borrow())
             },
             Err(msg) => {
-                eprintln!("{}", msg);
+                panic!("\n\n{}\n\n", msg);
             }
         }
 

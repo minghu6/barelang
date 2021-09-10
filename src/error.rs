@@ -4,16 +4,15 @@ use crate::make_simple_error_rules;
 use crate::datair::BaId;
 
 ////////////////////////////////////////////////////////////////////////////////
-//// Rule Engine Error
+//// Define Error
 
 make_simple_error_rules!(RuleErr);
+make_simple_error_rules!(BaCErr);
+make_simple_error_rules!(CLIErr);
 
 
 ////////////////////////////////////////////////////////////////////////////////
-//// Bare Lang Compiler Error
-
-make_simple_error_rules!(BaCErr);
-
+//// Trap Code
 
 #[derive(Debug)]
 pub enum TrapCode<'a> {
@@ -23,7 +22,10 @@ pub enum TrapCode<'a> {
     UnsupportedBopOperand,
 
     /* RuleErr */
-    AmbigousLLRule(String)
+    AmbigousLLRule(String),
+
+    /* CLIErr */
+    InvalidCLIArgument(String)
 }
 
 impl<'a> TrapCode<'a> {
@@ -47,7 +49,10 @@ impl<'a> TrapCode<'a> {
                 RuleErr::new_box_err(
                     msg
                 )
-            }
+            },
+            Self::InvalidCLIArgument(msg) => {
+                CLIErr::new_box_err(msg)
+            },
             _ => {
                 BaCErr::new_box_err(
                     format!(

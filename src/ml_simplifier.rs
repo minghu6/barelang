@@ -56,15 +56,11 @@ impl MLSimplifier {
         match blkstmtsref {
             LspBlockStmt::Stmt(lspstmt) => {
                 self.simplify_stmt(lspstmt)
-            },
-            LspBlockStmt::Declare(id, expr) => {
-                self.simplify_declare(id, expr)
-                .into_iter().map(|dec| BaStmt::Declare(dec)).collect_vec()
             }
         }
     }
 
-    fn simplify_stmt(&self, lspstmt: &LspStmt) -> Vec<BaStmt> {
+    fn simplify_stmt(&mut self, lspstmt: &LspStmt) -> Vec<BaStmt> {
         match lspstmt {
             LspStmt::Expr(lspexpr) => {
                 let (decval, new_decs) = self.simplify_expr(lspexpr);
@@ -85,7 +81,10 @@ impl MLSimplifier {
         }
     }
 
-    fn simplify_declare(&mut self, lspid: &LspId, lspexpr: &LspExpr) -> Vec<BaDeclare> {
+    fn simplify_declare(&mut self, lspdec: &LspDeclare) -> (BaDecVal, Vec<BaDeclare>) {
+        let lspid = &lspdec.id;
+        let lspexpr = &lspdec.val;
+
         let (decval, mut new_decs)
         = self.simplify_expr(lspexpr);
 
@@ -94,24 +93,23 @@ impl MLSimplifier {
         let ty = decval.get_batype();
         let loc = decval.get_loc();
         let prival = self.decval2prival(decval, &mut new_decs);
+        let decval = BaDecVal::PriVal(prival);
 
-        new_decs.push(
-            BaDeclare {
-                name: BaId {
-                    name: lspid.name.clone(),
-                    splid: lspid.splid.clone(),
-                    ty,
-                    loc
-                },
-                value: BaDecVal::PriVal(prival)
-            }
-        );
+        new_decs.push(BaDeclare {
+            name: BaId {
+                name: lspid.name.clone(),
+                splid: lspid.splid.clone(),
+                ty,
+                loc
+            },
+            value: decval.clone()
+        });
 
-        new_decs
+        (decval, new_decs)
     }
 
 
-    fn simplify_expr(&self, lspexpr: &LspExpr) -> (BaDecVal, Vec<BaDeclare>) {
+    fn simplify_expr(&mut self, lspexpr: &LspExpr) -> (BaDecVal, Vec<BaDeclare>) {
         match lspexpr {
             LspExpr::Pri(pri) => {
                 self.simplify_pri(pri)
@@ -160,6 +158,9 @@ impl MLSimplifier {
             LspExpr::FunCall(lspfuncall) => {
                 self.simplify_funcall(lspfuncall)
             },
+            LspExpr::Declare(lsp_expr_rc) => {
+                self.simplify_declare(lsp_expr_rc)
+            },
             LspExpr::CompPri(lspcomptn) => {
                 let (prival, new_decs)
                 = self.simplify_compexpr(lspcomptn);
@@ -169,7 +170,7 @@ impl MLSimplifier {
         }
     }
 
-    fn simplify_pri(&self, lsppri: &LspPri) -> (BaDecVal, Vec<BaDeclare>) {
+    fn simplify_pri(&mut self, lsppri: &LspPri) -> (BaDecVal, Vec<BaDeclare>) {
         match lsppri {
             LspPri::Expr(lspexpr_rc) => {
                 self.simplify_expr(&lspexpr_rc.as_ref().borrow())
@@ -201,7 +202,7 @@ impl MLSimplifier {
         }
     }
 
-    fn simplify_funcall(&self, lspfuncall: &LspFunCall)
+    fn simplify_funcall(&mut self, lspfuncall: &LspFunCall)
     -> (BaDecVal, Vec<BaDeclare>)
     {
         let mut new_decs = vec![];
@@ -246,7 +247,7 @@ impl MLSimplifier {
         (decval, new_decs)
     }
 
-    fn simplify_compexpr(&self, pritn: &LspCompPriTN) -> (BaPriVal, Vec<BaDeclare>) {
+    fn simplify_compexpr(&mut self, pritn: &LspCompPriTN) -> (BaPriVal, Vec<BaDeclare>) {
         let mut gensym_ser = gen_gensym_ser("tmp", gen_counter());
 
         self.unfold_compexpr(pritn, &mut gensym_ser)
@@ -255,7 +256,7 @@ impl MLSimplifier {
     ////////////////////////////////////////////////////////////////////////////////
     //// Helper
 
-    fn unfold_compexpr(&self, pritn: &LspCompPriTN, gensym_ser: &mut SymGen)
+    fn unfold_compexpr(&mut self, pritn: &LspCompPriTN, gensym_ser: &mut SymGen)
     -> (BaPriVal, Vec<BaDeclare>)
     {
         match pritn {
