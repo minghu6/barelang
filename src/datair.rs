@@ -19,6 +19,9 @@ pub trait GetLoc {
     fn get_loc(&self) -> SrcLoc;
 }
 
+pub trait LLVMIRTag {
+    fn tag_str(&self) -> String;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 //// BaLit
@@ -57,6 +60,12 @@ pub struct BaFloat {
 pub struct BaStr {
     pub val: String,
     pub loc: SrcLoc
+}
+
+impl LLVMIRTag for BaStr {
+    fn tag_str(&self) -> String {
+        format!("{}%bastr", &self.loc)
+    }
 }
 
 ///
@@ -320,6 +329,7 @@ impl GetLoc for BaDecVal {
 #[derive(Debug, Clone)]
 pub enum ExRefType {
     I64,
+    I32,
     F64,
     Str,
     Void
@@ -330,6 +340,7 @@ impl ExRefType {
         match &self {
             Self::F64 => BaType::Float,
             Self::I64 => BaType::I64,
+            Self::I32 => BaType::I32,
             Self::Str => BaType::Str,
             Self::Void => BaType::Void
         }

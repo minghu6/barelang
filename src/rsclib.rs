@@ -16,9 +16,9 @@ lazy_static! {
         "printi" => ExRefFunProto {
             name: "printi".to_owned(),
             params: vec![
-                ExRefType::I64
+                ExRefType::I32
             ],
-            ret: ExRefType::I64
+            ret: ExRefType::I32
         },
         "prints" => ExRefFunProto {
             name: "prints".to_owned(),

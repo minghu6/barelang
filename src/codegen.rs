@@ -10,10 +10,7 @@ use inkwell::targets::{
     InitializationConfig,
     RelocMode, Target, TargetMachine, FileType
 };
-use inkwell::types::{
-    AnyTypeEnum, BasicType, BasicTypeEnum, FunctionType, IntType, VoidType,
-    PointerType
-};
+use inkwell::types::{AnyTypeEnum, ArrayType, BasicType, BasicTypeEnum, FunctionType, IntType, PointerType, VoidType};
 use inkwell::values::{BasicValue, BasicValueEnum, CallSiteValue, FloatValue, FunctionValue, InstructionValue, IntValue, PointerValue};
 use inkwell::AddressSpace;
 
@@ -54,13 +51,12 @@ pub fn codegen(config: &CompilerConfig, bin: &BaBin) -> Result<(), Box<dyn Error
 }
 
 
-#[allow(unused)]
 struct CodeGen<'ctx> {
     context: &'ctx Context,
     module: Module<'ctx>,
     builder: Builder<'ctx>,
     fpm: PassManager<FunctionValue<'ctx>>,
-    namedvars: IndexMap<String, PointerValue<'ctx>>,
+    namedvars: IndexMap<String, BasicValueEnum<'ctx>>,
     config: &'ctx CompilerConfig,
     dbi: DebugInfo<'ctx>
 }
@@ -221,8 +217,10 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_return(Some(&rtn));
         let main_fn = self.module.get_function("main").unwrap();
 
-        if self.config.optlv != OptLv::Debug {
-            self.fpm.run_on(&main_fn);
+        if main_fn.verify(true) {
+            if self.config.optlv != OptLv::Debug {
+                self.fpm.run_on(&main_fn);
+            }
         }
     }
 
@@ -237,11 +235,11 @@ impl<'ctx> CodeGen<'ctx> {
 
     fn codegen_declare(&mut self, dec: &BaDeclare) -> Result<(), Box<dyn Error>> {
         let id = &dec.name;
-        let ptr;
+        let res;
 
         match &dec.value {
             BaDecVal::PriVal(prival) => {
-                ptr = self.codegen_prival(prival)?;
+                res = self.codegen_prival(prival)?;
             },
             BaDecVal::FunCall(funcall) => {
                 let funrtn_callsite = self.codegen_funcall(funcall)?;
@@ -255,83 +253,72 @@ impl<'ctx> CodeGen<'ctx> {
                     )
                 }
                 else {
-                    let basicval = funrtn_either.left().unwrap();
-                    if let Some(ret_t)
-                    = funrtn_callsite.get_called_fn_value().get_type().get_return_type() {
-                        ptr = self.builder.build_alloca(ret_t, id.name.as_str());
-                        self.builder.build_store(ptr, basicval);
-                    }
-                    else {
-                        return Err(
-                            BaCErr::new_box_err(
-                                format!("fun proto {:?} return None", funcall.name).as_str()
-                            )
-                        )
-                    }
+                    res = funrtn_either.left().unwrap();
                 }
             },
             BaDecVal::TwoAddr(bop, fstprival, sndprival) => {
-                ptr = self.codegen_2addrexpr(bop, fstprival, sndprival)?;
+                res = self.codegen_2addrexpr(bop, fstprival, sndprival)?;
             },
         }
 
-        self.namedvars.insert(id.name.to_string(), ptr);
+        self.namedvars.insert(id.name.to_string(), res);
 
         Ok(())
     }
 
     fn codegen_prival(&mut self, prival: &BaPriVal)
-    -> Result<PointerValue<'ctx>, Box<dyn Error>>
+    -> Result<BasicValueEnum<'ctx>, Box<dyn Error>>
     {
-        let ptr;
+        let res: BasicValueEnum;
 
         match prival {
             BaPriVal::Lit(lit) => {
                 match lit {
                     BaLit::I32(i32val) => {
                         let i32_t = self.context.i32_type();
-                        let value = i32_t.const_int(i32val.val as u64, false);
-                        ptr = self.builder.build_alloca(i32_t, &gensym_rand());
-                        self.builder.build_store(ptr, value);
-
+                        res = i32_t.const_int(i32val.val as u64, false).into();
                     },
                     BaLit::Str(bastr) => {
                         let strval = &bastr.val;
                         let i8_t = self.context.i8_type();
                         let i64_t = self.context.i64_type();
-                        let i8ptr_t = i8_t.ptr_type(AddressSpace::Generic);
 
-                        let cchars
+                        let mut cchars
                         = strval
                         .as_bytes()
                         .into_iter()
                         .map(|x| i8_t.const_int(*x as u64, false))
                         .collect_vec();
 
+                        cchars.push(i8_t.const_zero());
+
                         let cchars_len
                         = i64_t.const_int(
-                            (strval.len() as usize).try_into().unwrap(),
+                            (strval.len() + 1 as usize).try_into().unwrap(),
                             false
                         );
 
+                        // 栈上分配
                         let cchars_ptr
-                        = self.builder.build_array_alloca(i8ptr_t, cchars_len, &gensym_rand());
-                        let cchars_val = i8_t.const_array(&cchars[..]);
+                        = self.builder.build_array_alloca(i8_t, cchars_len, &bastr.tag_str());
+                        // // 堆上分配
+                        // let cchars_ptr
+                        // = self.builder.build_array_malloc(i8_strarr_t, cchars_len, "buildstr")?;
+                        for (i, cchar_int) in cchars.into_iter().enumerate() {
+                            let idx = i64_t.const_int(i as u64, false);
+                            let ptr
+                            = unsafe { self.builder.build_gep(cchars_ptr, &[idx.into()], "") };
+                            self.builder.build_store(ptr, cchar_int);
+                        }
 
-                        self.builder.build_store(cchars_ptr, cchars_val);
-
-                        ptr = self.builder.build_alloca(
-                            i8ptr_t.ptr_type(AddressSpace::Generic),
-                            &gensym_rand()
-                        );
-                        self.builder.build_store(ptr, cchars_ptr);
+                        res = cchars_ptr.into();
                     },
                     _ => unreachable!()
                 }
             },
             BaPriVal::Id(valid) => {
                 if let Some(valsymptr) = self.namedvars.get(&valid.name) {
-                    ptr = valsymptr.clone();
+                    res = valsymptr.clone();
                 }
                 else {
                     return Err(
@@ -341,7 +328,7 @@ impl<'ctx> CodeGen<'ctx> {
             },
         }
 
-        Ok(ptr)
+        Ok(res)
     }
 
     fn codegen_funcall(&mut self, funcall: &BaFunCall)
@@ -355,7 +342,7 @@ impl<'ctx> CodeGen<'ctx> {
             Some(BaSplId::RS) => {
                 let funtype;
                 if let Some(proto) = search_rs_lib(&fid.name) {
-                    funtype = self.exproto2funtype(proto);
+                    funtype = self.exproto_to_funtype(proto);
                 }
                 else {
                     unreachable!()
@@ -383,7 +370,7 @@ impl<'ctx> CodeGen<'ctx> {
         let rtn = self.builder.build_call(
             fnval,
             &args_vec[..],
-            &fid.name
+            format!("call_{}", &fid.name).as_str()
         );
 
         Ok(rtn)
@@ -402,7 +389,7 @@ impl<'ctx> CodeGen<'ctx> {
                 BaPriVal::Id(id) => {
                     if let Some(ptrval) = self.namedvars.get(&id.name) {
                         res.push(
-                            self.builder.build_load(*ptrval, "")
+                            ptrval.clone()
                         );
                     }
                     else {
@@ -418,37 +405,29 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     fn codegen_2addrexpr(&mut self, bop: &BaBOp, fstpri: &BaPriVal, sndpri: &BaPriVal)
-    -> Result<PointerValue<'ctx>, Box<dyn Error>>
+    -> Result<BasicValueEnum<'ctx>, Box<dyn Error>>
     {
-        let fstptr = self.codegen_prival(fstpri)?;
-        let sndptr = self.codegen_prival(sndpri)?;
-        let fst_bv
-        = self.builder.build_load(fstptr, "");
-        let snd_bv
-        = self.builder.build_load(sndptr, "");
+        let fst_bv = self.codegen_prival(fstpri)?;
+        let snd_bv = self.codegen_prival(sndpri)?;
 
-        let ptr;
+        let res: BasicValueEnum;
 
         match bop {
             &BaBOp::Add => {
                 match fst_bv {
                     BasicValueEnum::IntValue(_) => {
-                        let res = self.builder.build_int_add(
+                        res = self.builder.build_int_add(
                             self.try_as_int_val(fst_bv)?,
                             self.try_as_int_val(snd_bv)?,
                             ""
-                        );
-                        ptr = self.builder.build_alloca(res.get_type(), &gensym_rand());
-                        self.builder.build_store(ptr, res);
+                        ).into();
                     },
                     BasicValueEnum::FloatValue(_) => {
-                        let res = self.builder.build_float_add(
+                        res = self.builder.build_float_add(
                             self.try_as_float_val(fst_bv)?,
                             self.try_as_float_val(snd_bv)?,
                             ""
-                        );
-                        ptr = self.builder.build_alloca(res.get_type(), &gensym_rand());
-                        self.builder.build_store(ptr, res);
+                        ).into();
                     },
                     _ => {
                         unreachable!("{:?}", fst_bv);
@@ -458,22 +437,18 @@ impl<'ctx> CodeGen<'ctx> {
             &BaBOp::Sub => {
                 match fst_bv {
                     BasicValueEnum::IntValue(_) => {
-                        let res = self.builder.build_int_sub(
+                        res = self.builder.build_int_sub(
                             self.try_as_int_val(fst_bv)?,
                             self.try_as_int_val(snd_bv)?,
                             ""
-                        );
-                        ptr = self.builder.build_alloca(res.get_type(), &gensym_rand());
-                        self.builder.build_store(ptr, res);
+                        ).into()
                     },
                     BasicValueEnum::FloatValue(_) => {
-                        let res = self.builder.build_float_sub(
+                        res = self.builder.build_float_sub(
                             self.try_as_float_val(fst_bv)?,
                             self.try_as_float_val(snd_bv)?,
                             ""
-                        );
-                        ptr = self.builder.build_alloca(res.get_type(), &gensym_rand());
-                        self.builder.build_store(ptr, res);
+                        ).into()
                     },
                     _ => {
                         unreachable!("{:?}", fst_bv);
@@ -483,22 +458,18 @@ impl<'ctx> CodeGen<'ctx> {
             &BaBOp::Mul => {
                 match fst_bv {
                     BasicValueEnum::IntValue(_) => {
-                        let res = self.builder.build_int_mul(
+                        res = self.builder.build_int_mul(
                             self.try_as_int_val(fst_bv)?,
                             self.try_as_int_val(snd_bv)?,
                             ""
-                        );
-                        ptr = self.builder.build_alloca(res.get_type(), "");
-                        self.builder.build_store(ptr, res);
+                        ).into();
                     },
                     BasicValueEnum::FloatValue(_) => {
-                        let res = self.builder.build_float_mul(
+                        res = self.builder.build_float_mul(
                             self.try_as_float_val(fst_bv)?,
                             self.try_as_float_val(snd_bv)?,
                             ""
-                        );
-                        ptr = self.builder.build_alloca(res.get_type(), "");
-                        self.builder.build_store(ptr, res);
+                        ).into();
                     },
                     _ => {
                         unreachable!("{:?}", fst_bv);
@@ -508,22 +479,18 @@ impl<'ctx> CodeGen<'ctx> {
             &BaBOp::Div => {
                 match fst_bv {
                     BasicValueEnum::IntValue(_) => {
-                        let res = self.builder.build_int_signed_div(
+                        res = self.builder.build_int_signed_div(
                             self.try_as_int_val(fst_bv)?,
                             self.try_as_int_val(snd_bv)?,
                             ""
-                        );
-                        ptr = self.builder.build_alloca(res.get_type(), "");
-                        self.builder.build_store(ptr, res);
+                        ).into();
                     },
                     BasicValueEnum::FloatValue(_) => {
-                        let res = self.builder.build_float_div(
+                        res = self.builder.build_float_div(
                             self.try_as_float_val(fst_bv)?,
                             self.try_as_float_val(snd_bv)?,
                             ""
-                        );
-                        ptr = self.builder.build_alloca(res.get_type(), "");
-                        self.builder.build_store(ptr, res);
+                        ).into();
                     },
                     _ => {
                         unreachable!("{:?}", fst_bv);
@@ -534,22 +501,18 @@ impl<'ctx> CodeGen<'ctx> {
             &BaBOp::Mod => {
                 match fst_bv {
                     BasicValueEnum::IntValue(_) => {
-                        let res = self.builder.build_int_signed_rem(
+                        res = self.builder.build_int_signed_rem(
                             self.try_as_int_val(fst_bv)?,
                             self.try_as_int_val(snd_bv)?,
                             ""
-                        );
-                        ptr = self.builder.build_alloca(res.get_type(), "");
-                        self.builder.build_store(ptr, res);
+                        ).into();
                     },
                     BasicValueEnum::FloatValue(_) => {
-                        let res = self.builder.build_float_rem(
+                        res = self.builder.build_float_rem(
                             self.try_as_float_val(fst_bv)?,
                             self.try_as_float_val(snd_bv)?,
                             ""
-                        );
-                        ptr = self.builder.build_alloca(res.get_type(), "");
-                        self.builder.build_store(ptr, res);
+                        ).into();
                     },
                     _ => {
                         unreachable!("{:?}", fst_bv);
@@ -558,7 +521,7 @@ impl<'ctx> CodeGen<'ctx> {
             },
         }
 
-        Ok(ptr)
+        Ok(res)
     }
 
     ///////////////////////////////////////////////////////////////////////////
@@ -608,12 +571,15 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    fn exproto2funtype(&self, proto: &ExRefFunProto) -> FunctionType<'ctx> {
+    ///////////////////////////////////////////////////////////////////////////
+    //// Foreign Type Cast
+
+    fn exproto_to_funtype(&self, proto: &ExRefFunProto) -> FunctionType<'ctx> {
         let params = proto.params.iter().map(|param| {
-            self.exrefty2basicty(param).unwrap()
+            self.exty_to_basicty(param).unwrap()
         }).collect_vec();
 
-        match self.exref2retty(&proto.ret) {
+        match self.exty_to_retty(&proto.ret) {
             Either::Left(tye) => {
                 tye.fn_type(&params[..], false)
             },
@@ -623,13 +589,16 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    fn exref2retty(&self, ty: &ExRefType) -> Either<BasicTypeEnum<'ctx>, VoidType<'ctx>> {
+    fn exty_to_retty(&self, ty: &ExRefType) -> Either<BasicTypeEnum<'ctx>, VoidType<'ctx>> {
         match &ty {
             ExRefType::F64  => Either::Left(BasicTypeEnum::<'ctx>::FloatType(
                 self.context.f64_type()
             )),
             ExRefType::I64  => Either::Left(BasicTypeEnum::<'ctx>::IntType(
                 self.context.i64_type()
+            )),
+            ExRefType::I32  => Either::Left(BasicTypeEnum::<'ctx>::IntType(
+                self.context.i32_type()
             )),
             ExRefType::Void => Either::Right(self.context.void_type()),
             ExRefType::Str => Either::Left(BasicTypeEnum::<'ctx>::PointerType(
@@ -638,52 +607,16 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    fn exrefty2basicty(&self, ty: &ExRefType) -> Option<BasicTypeEnum<'ctx>> {
-        match &ty {
-            ExRefType::F64  => Some(BasicTypeEnum::<'ctx>::FloatType(
-                self.context.f64_type()
-            )),
-            ExRefType::I64  => Some(BasicTypeEnum::<'ctx>::IntType(
-                self.context.i64_type()
-            )),
-            ExRefType::Void => {
-                None
-            },
-            ExRefType::Str => {
-                Some(BasicTypeEnum::<'ctx>::PointerType(
-                    self.context.i8_type().ptr_type(AddressSpace::Const)
-                ))
-            }
+    fn exty_to_basicty(&self, ty: &ExRefType) -> Option<BasicTypeEnum<'ctx>> {
+        match self.exty_to_retty(ty) {
+            Either::Left(basic) => Some(basic),
+            Either::Right(_) => None
         }
     }
 
-    // #[inline]
-    // fn i64_t(&self) -> IntType {
-    //     self.context.i64_type()
-    // }
-
-    // #[inline]
-    // fn i8_t(&self) -> IntType {
-    //     self.context.i8_type()
-    // }
-
-    // #[inline]
-    // fn i8ptr_t(&self) -> PointerType {
-    //     self.i8_t().ptr_type(AddressSpace::Generic)
-    // }
-
-    // #[inline]
-    // fn i8ptr_const_t(&self) -> PointerType {
-    //     self.i8_t().ptr_type(AddressSpace::Const)
-    // }
-}
-
-
-
-
-impl<'ctx> CodeGen<'ctx> {
 
 }
+
 
 
 ////////////////////////////////////////////////////////////////////////////////

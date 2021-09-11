@@ -209,7 +209,7 @@ fn analyze_pri(ast_node: &ASTNode) -> Result<LspPri, Box<dyn Error>> {
     Ok(match fstsym.to_string().as_str() {
         "[Lit]" => LspPri::Lit(analyze_lit(fstelem)?),
         "[Id]" => LspPri::Id(Rc::new(RefCell::new(analyze_id(fstelem)?))),
-        "<paren>" => LspPri::Expr(Rc::new(RefCell::new(analyze_expr(
+        "<lparen>" => LspPri::Expr(Rc::new(RefCell::new(analyze_expr(
             &elems_iter.next().unwrap().1,
         )?))),
         _ => unreachable!(),
