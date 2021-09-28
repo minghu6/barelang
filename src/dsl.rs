@@ -7,8 +7,6 @@
 ////```
 
 
-pub struct Sym {}
-
 #[macro_export]
 macro_rules! declare_terminal {
     ($name:ident) => {
@@ -55,7 +53,9 @@ macro_rules! use_epsilon {
 #[macro_export]
 macro_rules! grammar {
     [$gram_name:ident|
-         $($name:ident : $(| $($gramsym:ident)+ ;)+ )+
+         $($name:ident : $($no:literal -> $($gramsym:ident)+; )+
+
+        )+
     |] =>
     {
         {
@@ -93,54 +93,6 @@ macro_rules! grammar {
     }
 }
 
-
-#[macro_export]
-macro_rules! First {
-    ($name:ident | $($sym:ident)+) => {
-        {
-            use indexmap::indexset;
-
-            let mut _set = indexset!{};
-            $(
-                let sym_s = stringify!($sym);
-
-                let fstsym = if sym_s == "ε" {
-                    $crate::gram::FstSetSym::Epsilon
-                } else {
-                    $crate::gram::FstSetSym::Sym(sym_s.to_string())
-                };
-
-                _set.insert(fstsym);
-            )+
-
-            ($crate::gram::GramSym::NonTerminal(stringify!($name).to_string()), _set)
-        }
-    }
-}
-
-#[macro_export]
-macro_rules! Follow {
-    ($name:ident | $($sym:ident)+) => {
-        {
-            use indexmap::indexset;
-
-            let mut _set = indexset!{};
-            $(
-                let sym_s = stringify!($sym);
-
-                let fstsym = if sym_s == "NUL" {
-                    $crate::gram::FollSetSym::EndMarker
-                } else {
-                    $crate::gram::FollSetSym::Sym(sym_s.to_string())
-                };
-
-                _set.insert(fstsym);
-            )+
-
-            ($crate::gram::GramSym::NonTerminal(stringify!($name).to_string()), _set)
-        }
-    }
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Lex DFA Map
@@ -192,14 +144,64 @@ macro_rules! token_recognizer {
     }
 }
 
-// #[macro_export]
-// macro_rules! exref_proto {
-//     ( $exref_t:ident, $ctx:ident ) => {
-//         {
-//             match $exref_t {
-//                 ExRefType::I64 => $ctx.i64_type(),
-//                 ExRefType::F64 => $ctx.f64_type()
-//             }
-//         }
-//     };
-// }
+#[macro_export]
+macro_rules! ht {
+    ( $head_lit:literal | $tail_lit:expr ) => {
+        {
+            let mut _vec = vec![$head_lit];
+            _vec.extend($tail_lit.iter().cloned());
+            _vec
+        }
+    };
+    ( $head_lit:literal | $tail:ident ) => {
+        {
+            let mut _vec = vec![$head_lit];
+            _vec.extend($tail.iter().cloned());
+            _vec
+        }
+    };
+    ( $head:ident | $tail_lit:literal ) => {
+        {
+            let tail = $tail_lit;
+            $ht![$head | $tail]
+        }
+    };
+    ( $head:ident | $tail:ident ) => {
+        {
+            let mut _vec = vec![$head];
+            _vec.extend($tail.iter().cloned());
+            _vec
+        }
+    };
+    ( $head:ident | $tail:expr ) => {
+        {
+            let mut _vec = vec![$head];
+            _vec.extend($tail.iter().cloned());
+            _vec
+        }
+    };
+    ( $head:expr, | $tail:expr ) => {
+        {
+            let mut _vec = vec![$head];
+            _vec.extend($tail.iter().cloned());
+            _vec
+        }
+    };
+    ( $head: ident) => {
+        {
+            vec![$head]
+        }
+    };
+    ( $head: expr) => {
+        {
+            vec![$head]
+        }
+    };
+    ( $head: ident) => {
+        {
+            vec![$head]
+        }
+    }
+
+}
+

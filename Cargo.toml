@@ -11,6 +11,8 @@ regex = "1"
 lazy_static = "1.4.0"
 clap = "2.33.3"
 uuid = { version = "0.8", features = ["v4"] }
+# m6stack = "0.1.0"
+m6stack = { git = "https://github.com/minghu6/rust-m6stack", branch = "master" }
 
 [dependencies.proc_macros]
 package = "bare-proc-macros"

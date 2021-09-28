@@ -11,30 +11,50 @@ pub mod gram;
 pub mod rules;
 pub mod dsl;
 pub mod lexer;
-pub mod syntax_parser;
-pub mod semantic_analyzer;
 pub mod ml_simplifier;
+pub mod manual_parser;
 pub mod datalsp;
 pub mod datair;
+pub mod datacg;
 pub mod codegen;
 pub mod rsclib;
 pub mod utils;
 pub mod error;
 pub mod dbi;
 
-use std::path::PathBuf;
 
 use lexer::SrcFileInfo;
 pub use proc_macros::{
     make_vec_macro_rules,
     make_char_matcher_rules,
     make_token_matcher_rules,
-    make_simple_error_rules
+    make_simple_error_rules,
+    //ht
 };
+use utils::PrintTy;
 
 make_vec_macro_rules!(vecdeq , std::collections::VecDeque, push_back);
 
 pub static mut VERBOSE: VerboseLv = VerboseLv::V0;
+
+/// check if current verbose level meet the required verbose lv
+#[inline]
+pub fn verbose_enable(verbose: VerboseLv) -> bool {
+    unsafe {
+        VERBOSE >= verbose
+    }
+}
+
+#[inline]
+pub fn verbose_enable_v2() -> bool {
+    verbose_enable(VerboseLv::V2)
+}
+
+#[inline]
+pub fn verbose_enable_v1() -> bool {
+    verbose_enable(VerboseLv::V1)
+}
+
 
 ///////////////////////////////////////////////////////////////////////////
 //// Compiler Config
@@ -86,7 +106,7 @@ pub struct CompilerConfig {
     pub target_type: TargetType,
     pub emit_type: EmitType,
     pub file: SrcFileInfo,
-    pub objpath: PathBuf
+    pub print_type: PrintTy
 }
 
 
@@ -101,5 +121,30 @@ impl CompilerConfig {
 
     pub fn dirname(&self) -> String {
         self.file.get_path().parent().unwrap().to_string_lossy().to_string()
+    }
+}
+
+
+#[cfg(test)]
+mod test {
+
+    #[test]
+    fn test_ht() {
+        use crate::ht;
+
+        let a = 1;
+        let c = 3;
+        let b = vec![2];
+
+        println!("{:?}", ht![a | b]);
+
+        println!("{:?}", ht![c | ht![a| ht![a | b]]]);
+
+        println!("{:?}", ht![2|b]);
+
+        println!("{:?}", ht![2| vec![3] ]);
+
+        println!("{:?}", ht![0 | ht![1 | ht![2| ht![3]]]]);
+
     }
 }

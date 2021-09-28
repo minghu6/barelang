@@ -1,8 +1,18 @@
 //! IR Data (Non Recursive)
+#![allow(unused_imports)]
 
-use crate::datalsp::LspId;
+use std::rc::Rc;
+use std::cell::RefCell;
+use std::fmt;
+use std::error::Error;
+
+use indexmap::{IndexMap, indexmap};
+use inkwell::values::BasicValueEnum;
+use itertools::Itertools;
+
+use crate::error::TrapCode;
 use crate::lexer::{SrcLoc, Token};
-use crate::semantic_analyzer::BOP_PREC_MAP;
+use crate::manual_parser::BOP_PREC_MAP;
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Common Trait
@@ -22,6 +32,78 @@ pub trait GetLoc {
 pub trait LLVMIRTag {
     fn tag_str(&self) -> String;
 }
+
+
+////////////////////////////////////////////////////////////////////////////////
+//// BaFunHdr
+
+#[derive(Debug, Clone)]
+pub struct BaFunHdr {
+    pub name: BaId,
+    pub params: Vec<BaParam>,
+    pub ret: BaType
+}
+
+impl BaFunHdr {
+    pub fn name(&self) -> String {
+        self.name.name.to_owned()
+    }
+}
+
+impl From<(BaId, Vec<BaParam>, BaType)> for BaFunHdr {
+    fn from(triple: (BaId, Vec<BaParam>, BaType)) -> Self {
+        Self {
+            name: triple.0,
+            params: triple.1,
+            ret: triple.2
+        }
+    }
+}
+
+impl BaFunHdr {
+    pub fn as_key(&self) -> BaFunKey {
+        BaFunKey(
+            self.name.name.clone(),
+            self.params
+            .iter()
+            .map(|param| param.ty.clone())
+            .collect_vec()
+        )
+    }
+}
+
+impl GetLoc for BaFunHdr {
+    fn get_loc(&self) -> SrcLoc {
+        self.name.get_loc()
+    }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//// BaParam
+
+#[derive(Debug, Clone)]
+pub struct BaParam {
+    pub formal: String,
+    pub ty: BaType,
+}
+
+impl From<BaId> for BaParam {
+    fn from(id: BaId) -> Self {
+        Self {
+            formal: id.name,
+            ty: id.ty.unwrap()
+        }
+    }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//// BaFunKey
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct BaFunKey(pub String, pub Vec<BaType>);
+
 
 ////////////////////////////////////////////////////////////////////////////////
 //// BaLit
@@ -85,7 +167,7 @@ impl ToBaType for BaLit {
     fn to_batype(&self) -> BaType {
         match &self {
             Self::Float(_) => BaType::Float,
-            Self::I32(_) => BaType::I32,
+            Self::I32(_) => BaType::Int,
             Self::I64(_) => BaType::I64,
             Self::USize(_) => BaType::USize,
             Self::U8(_) => BaType::U8,
@@ -114,13 +196,51 @@ impl GetLoc for BaLit {
 pub enum BaType {
     USize,
     I64,
-    I32,
+    Int,    // I32
     U8,
     Float,
-    Void,   // Rust Unit,
+    VoidUnit,   // Rust Unit,
     Str,
+    Customized(Rc<BaId>),
     ExRefFunProto(ExRefFunProto)
 }
+
+impl fmt::Display for BaType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", match &self {
+            Self::Customized(tyid) => tyid.name.clone(),
+            Self::ExRefFunProto(exref_proto) => format!("{:?}", exref_proto),
+            _ => format!("{:?}", self)
+        })
+    }
+}
+
+impl PartialEq for BaType {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Customized(l0), Self::Customized(r0)) => l0.ty == r0.ty,
+            (Self::ExRefFunProto(l0), Self::ExRefFunProto(r0)) => l0 == r0,
+            _ => core::mem::discriminant(self) == core::mem::discriminant(other),
+        }
+    }
+}
+
+impl Eq for BaType {}
+
+impl std::hash::Hash for BaType {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            Self::Customized(baid) => {
+                baid.name.hash(state)
+            },
+            Self::ExRefFunProto(exref_funproto) => {
+                format!("{:?}", exref_funproto).hash(state)
+            },
+            _ => core::mem::discriminant(self).hash(state),
+        }
+    }
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 //// BaPriVal
@@ -163,7 +283,8 @@ impl GetLoc for BaPriVal {
 #[derive(Debug, Clone)]
 pub struct BaFunCall {
     pub name: BaId,
-    pub args: Vec<BaPriVal>
+    pub args: Vec<BaPriVal>,
+    pub ret: BaType
 }
 
 impl BaFunCall {
@@ -179,6 +300,30 @@ impl BaFunCall {
         else {
             None
         }
+    }
+
+    pub fn get_fun_key(&self) -> Result<BaFunKey, Box<dyn Error>> {
+        let mut collector = vec![];
+
+        for arg in self.args.iter() {
+            if let Some(ty) = arg.get_batype() {
+                collector.push(ty);
+            }
+            else {
+                match &arg {
+                    BaPriVal::Id(id) => {
+                        return Err(TrapCode::UnableToInferType(id).emit_box_err())
+                    },
+                    _ => unreachable!()
+                }
+            }
+        }
+
+
+        Ok(BaFunKey(
+            self.name.name.clone(),
+            collector
+        ))
     }
 }
 
@@ -199,20 +344,20 @@ pub struct BaId {
     pub loc: SrcLoc
 }
 
-impl GetLoc for BaId {
-    fn get_loc(&self) -> SrcLoc {
-        self.loc.clone()
+impl BaId {
+    pub fn sym(&self) -> String {
+        if let Some(splid) = &self.splid {
+            format!("{:?}#{}", splid, self.name)
+        }
+        else {
+            self.name.clone()
+        }
     }
 }
 
-impl From<LspId> for BaId {
-    fn from(lspid: LspId) -> Self {
-        Self {
-            name: lspid.name,
-            splid: lspid.splid,
-            ty: None,
-            loc: lspid.loc
-        }
+impl GetLoc for BaId {
+    fn get_loc(&self) -> SrcLoc {
+        self.loc.clone()
     }
 }
 
@@ -221,6 +366,13 @@ impl From<LspId> for BaId {
 pub enum BaSplId {
     RS,
 }
+
+
+////////////////////////////////////////////////////////////////////////////////
+//// BaParameter
+
+pub type BaParameter = BaId;
+
 
 ////////////////////////////////////////////////////////////////////////////////
 //// BaBOp
@@ -236,12 +388,12 @@ pub enum BaBOp {
 
 impl From<&Token> for BaBOp {
     fn from(tok: &Token) -> Self {
-        match tok.name() {
-            "add" => BaBOp::Add,
-            "sub" => BaBOp::Sub,
-            "mul" => BaBOp::Mul,
-            "div" => BaBOp::Div,
-            "percent" => BaBOp::Mod,
+        match tok.name().as_str() {
+            "<add>" => BaBOp::Add,
+            "<sub>" => BaBOp::Sub,
+            "<mul>" => BaBOp::Mul,
+            "<div>" => BaBOp::Div,
+            "<percent>" => BaBOp::Mod,
             _ => unreachable!(),
         }
     }
@@ -249,31 +401,47 @@ impl From<&Token> for BaBOp {
 
 impl BaBOp {
     pub fn precedence(&self) -> usize {
-        BOP_PREC_MAP.get(self).unwrap().clone()
+        BOP_PREC_MAP.with(|bop_preced_map| {
+            bop_preced_map.get(self).unwrap().clone()
+        })
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-//// BaBin
+//// BaMod
 
-/// 变量作用域
+/// Bare Lang 顶级作用域
 #[derive(Debug)]
-pub struct BaBin {
-    pub stmts: Vec<BaStmt>
+pub struct BaMod {
+    pub scope: Rc<RefCell<BaScope>>,
+    pub funtbl: Rc<IndexMap<BaFunKey, SymItem>>,
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum BaStmt {
     Declare(BaDeclare),
-    FunCall(BaFunCall)
+    DefFun(BaDefFun),
+    FunCall(BaFunCall),
+    Block(Rc<RefCell<BaScope>>)
 }
+
+impl From<BaDeclare> for BaStmt {
+    fn from(val: BaDeclare) -> Self {
+        BaStmt::Declare(val)
+    }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//// BaDeclare
 
 #[derive(Debug, Clone)]
 pub struct BaDeclare {
     pub name: BaId,
     pub value: BaDecVal
 }
+
 
 /// Declared Value <=> LspExpr
 #[derive(Debug, Clone)]
@@ -323,10 +491,91 @@ impl GetLoc for BaDecVal {
     }
 }
 
+
+////////////////////////////////////////////////////////////////////////////////
+//// BaDefFun
+
+#[derive(Debug, Clone)]
+pub struct BaDefFun {
+    pub hdr: BaFunHdr,
+    pub body: Rc<RefCell<BaScope>>
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//// BaScope
+
+#[derive(Clone)]
+pub struct BaScope {
+    pub(crate) id: usize,
+    pub(crate) stmts: Vec<BaStmt>,
+    pub(crate) tailval: Option<BaPriVal>,
+    pub(crate) parent: Option<Rc<RefCell<Self>>>,
+    pub(crate) symtbl: SymTbl
+}
+
+pub type SymTbl = IndexMap<String, SymItem>;
+
+impl BaScope {
+    pub fn new(id: usize) -> Self {
+        Self {
+            id,
+            stmts: vec![],
+            tailval: None,
+            parent: None,
+            symtbl: indexmap! {}
+        }
+    }
+
+    pub fn get_sym_item(&self, key: &str) -> Option<SymItem> {
+        if let Some(item) = self.symtbl.get(key) {
+            Some(item.clone())
+        }
+        else if let Some(paren) = &self.parent {
+            paren.as_ref().borrow().get_sym_item(key)
+        }
+        else {
+            None
+        }
+    }
+
+    pub fn parent_id(&self) -> Option<usize> {
+        if let Some(ref paren_scope_rc) = self.parent {
+            Some(paren_scope_rc.as_ref().borrow().id)
+        }
+        else {
+            None
+        }
+    }
+}
+
+impl fmt::Debug for BaScope {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f
+        .debug_struct("BaScope")
+        .field("id", &self.id)
+        .field("stmts", &self.stmts)
+        .field("tailval", &self.tailval)
+        .field("parent", &self.parent_id())
+        .field("symtbl", &self.symtbl)
+        .finish()
+    }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//// SymItem
+
+#[derive(Debug, Clone)]
+pub struct SymItem {
+    pub(crate) ty: BaType,
+}
+
+
 ////////////////////////////////////////////////////////////////////////////////
 //// External Reference
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExRefType {
     I64,
     I32,
@@ -340,18 +589,16 @@ impl ExRefType {
         match &self {
             Self::F64 => BaType::Float,
             Self::I64 => BaType::I64,
-            Self::I32 => BaType::I32,
+            Self::I32 => BaType::Int,
             Self::Str => BaType::Str,
-            Self::Void => BaType::Void
+            Self::Void => BaType::VoidUnit
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExRefFunProto {
     pub name: String,
     pub params: Vec<ExRefType>,
     pub ret: ExRefType,
 }
-
-

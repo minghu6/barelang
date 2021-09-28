@@ -1,7 +1,10 @@
+use std::cell::RefCell;
 use std::error::Error;
+use std::rc::Rc;
 
 use crate::make_simple_error_rules;
 use crate::datair::BaId;
+use crate::lexer::{SrcLoc, Token};
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Define Error
@@ -18,8 +21,14 @@ make_simple_error_rules!(CLIErr);
 pub enum TrapCode<'a> {
     /* BaCErr */
     UnresolvedSymbol(&'a BaId),
+    UnresolvedFn(&'a BaId),
     ToBaiscTypeOnVoid,
     UnsupportedBopOperand,
+    UnfinishedDerivation,
+    UnexpectedToken(&'a Token, &'a str),
+    DuplicatedDefn(&'a BaId),
+    DuplicatedDefsym(&'a BaId),
+    UnableToInferType(&'a BaId),
 
     /* RuleErr */
     AmbigousLLRule(String),
@@ -45,6 +54,23 @@ impl<'a> TrapCode<'a> {
                     ).as_str()
                 )
             },
+            Self::DuplicatedDefn(id)
+            | Self::DuplicatedDefsym(id)
+            | Self::UnableToInferType(id)
+            => {
+                BaCErr::new_box_err(
+                    format!(
+                        "{:?}: {:?}", self, id
+                    ).as_str()
+                )
+            },
+            Self::UnexpectedToken(tok, deriv_sym) => {
+                BaCErr::new_box_err(
+                    format!(
+                        "Unexpected token {} when deriv from: {}", tok, deriv_sym
+                    ).as_str()
+                )
+            },
             Self::AmbigousLLRule(msg) => {
                 RuleErr::new_box_err(
                     msg
@@ -62,4 +88,60 @@ impl<'a> TrapCode<'a> {
             }
         }
     }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//// Error Info Collector
+
+pub struct ErrInfoCollector {
+    err_items: Rc<RefCell<Vec<(SrcLoc, Box<dyn Error>)>>>
+}
+
+impl ErrInfoCollector {
+    pub fn new() -> Self {
+        Self {
+            err_items: Rc::new(RefCell::new(vec![]))
+        }
+    }
+
+    pub fn push(&mut self, srcloc: SrcLoc, err: Box<dyn Error>) {
+        self.err_items.as_ref().borrow_mut().push((srcloc, err));
+    }
+
+    pub fn collect(&mut self) -> Rc<RefCell<Vec<(SrcLoc, Box<dyn Error>)>>> {
+        let err_items = self.err_items.clone();
+
+        self.err_items = Rc::new(RefCell::new(vec![]));
+
+        err_items
+    }
+
+    pub fn dump_errs(&mut self) {
+        let errs = self.collect();
+
+        for (srcloc, err) in errs.as_ref().borrow().iter() {
+            eprintln!("{}: {}", srcloc, err);
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.err_items.as_ref().borrow().is_empty()
+    }
+}
+
+thread_local! {
+    pub static ERR_INFO_COLL: RefCell<ErrInfoCollector> = RefCell::new(ErrInfoCollector::new())
+}
+
+pub fn push_err(srcloc: SrcLoc, err: Box<dyn Error>) {
+    ERR_INFO_COLL.with(|coll| coll.borrow_mut().push(srcloc, err))
+}
+
+pub fn err_occured() -> bool {
+    ERR_INFO_COLL.with(|coll| !coll.borrow().is_empty())
+}
+
+pub fn dump_errs() {
+    ERR_INFO_COLL.with(|coll| coll.borrow_mut().dump_errs())
 }

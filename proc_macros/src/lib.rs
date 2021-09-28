@@ -1,10 +1,14 @@
+#![allow(unused_imports)]
+#![allow(unused_import_braces)]
+
 extern crate proc_macro;
 
 use proc_macro::TokenStream;
 use proc_macro2::{ Span };
 use syn::parse::{Parse, ParseStream, Result};
-use syn::{Ident, Token, parse_macro_input, Path, LitStr};
-use quote::{ quote };
+use syn::token::{Paren, Priv};
+use syn::{Expr, Ident, Lit, LitStr, MacroDelimiter, Path, Token, parse_macro_input};
+use quote::quote;
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -141,6 +145,7 @@ pub fn make_char_matcher_rules(input: TokenStream) -> TokenStream {
     TokenStream::from(token_stream)
 }
 
+
 ////////////////////////////////////////////////////////////////////////////////
 //// MakeTokenMatcher
 
@@ -203,6 +208,7 @@ pub fn make_token_matcher_rules(input: TokenStream) -> TokenStream {
     TokenStream::from(token_stream)
 }
 
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Define New Custom Error
 struct MakeSimpleError {
@@ -257,50 +263,54 @@ pub fn make_simple_error_rules(input: TokenStream) -> TokenStream {
     })
 }
 
-////////////////////////////////////////////////////////////////////////////////
-/////// Invoke Matcher
 
-// struct InvokeMatcher {
-//     matcher_name: Ident
+////////////////////////////////////////////////////////////////////////////////
+/////// ht![Head | Tail] -> New Vector
+
+// struct HT {
+//     head: Priv,
+//     tail: Priv
 // }
 
-// impl Parse for InvokeMatcher {
+// impl Parse for HT {
 //     fn parse(input: ParseStream) -> Result<Self> {
-//         if input.peek(Ident) {
-//             return Ok(Self { matcher_name: input.parse()? })
+//         if input.peek2(Paren) {
+//             input.parse::<Expr>(parser)
 //         }
-//         else {
-//             unreachable!()
-//         }
+
+
+//         let head = input.parse()?;
+//         input.parse::<Token!(|)>()?;
+//         let tail = input.parse()?;
+
+//         Ok(Self {
+//             head, tail
+//         })
 //     }
 // }
 
 // #[proc_macro]
-// pub fn invoke_matcher(input: TokenStream) -> TokenStream {
-//     let InvokeMatcher {
-//         matcher_name: Ident
-//     } = parse_macro_input!(input as InvokeMatcher);
+// pub fn ht(input: TokenStream) -> TokenStream {
+//     let HT {
+//         head,
+//         tail
+//     } = parse_macro_input!(input as HT);
 
-//     let mut token_stream = quote! {};
-
-//     let invoker_name = Ident::new(
-//         &format!("{}_m", #matcher_name.to_lowercase()),
+//     let new_vec_name = Ident::new(
+//         &Uuid::new_v4().to_simple().to_string(),
 //         Span::call_site()
 //     );
 
-//     token_stream.extend(quote! {
-//         pub fn #matcher_fn_name(c: &char) -> bool {
-//             lazy_static! {
-//                 static ref #matcher_reg_name: Box<dyn CharMatcher + Send + Sync>
-//                 = Box::new(RegexCharMatcher::new(#patstr));
-//             }
+//     TokenStream::from(quote! {
+//         {
+//             let mut #new_vec_name = vec![#head];
+//             #new_vec_name.extend(#tail.iter());
 
-//             #matcher_reg_name.is_match(c)
+//             #new_vec_name
 //         }
-//     });
-
-//     TokenStream::from(token_stream)
+//     })
 // }
+
 
 
 #[cfg(test)]

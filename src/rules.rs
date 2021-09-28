@@ -18,10 +18,10 @@ use crate::lexer::{
 make_char_matcher_rules! {
     ident       => "[[:alnum:]_]"    | r,
     ident_head  => "[[:alpha:]_]"    | r,
-    delimiter   => "[,|;]"           | r,
+    delimiter   => "[,|;|:]"           | r,
     num         => "[[:digit:]]"     | r,
     numsign     => "[+|-]"           | r,
-    op          => r#"[\+|\-|\*|/|%|\^|\||&|~|!|?|:|@|>|=|<|\.]"# | r,
+    op          => r#"[\+|\-|\*|/|%|\^|\||&|~|!|?|@|>|=|<|\.]"# | r,
     any         => r#"[\d\D]"#       | r,
     ng          => r#"[^[:graph:]]"# | r,
     sp          => r#"[[:space:]]"#  | r,
@@ -30,7 +30,6 @@ make_char_matcher_rules! {
     slash       => "/"               | n,
     parenthesis => r#"[\[\]{}\(\)]"# | r,
     zero        => "0"               | n,
-    colon       => ":"               | n,
     bslash      => "\\"              | n,
     question    => "?"               | n,
     eq          => "="               | n,
@@ -116,7 +115,6 @@ pub fn barelang_lexdfamap() -> LexDFAMapType {
             sp_m          | LexSt::Blank,       true
             delimiter_m   | LexSt::Delimiter,   true
             parenthesis_m | LexSt::Parenthesis, true
-            colon_m       | LexSt::Delimiter,   true
         },
         LexSt::SingleQuoteStrBSlash => {
             any_m | LexSt::SingleQuoteStr, false
@@ -159,7 +157,7 @@ pub fn barelang_lexdfamap() -> LexDFAMapType {
         LexSt::IdentName => {
             ident_m       | LexSt::IdentName, false
             sp_m          | LexSt::Blank,     true
-            parenthesis_m | LexSt::Blank,     true
+            parenthesis_m | LexSt::Parenthesis,     true
             delimiter_m   | LexSt::Delimiter, true
 
             sharp_m       | LexSt::SplIdent,  false
@@ -255,6 +253,14 @@ pub fn barelang_lexdfamap() -> LexDFAMapType {
 pub fn barelang_token_matcher_vec() -> TokenMatcherVec {
     token_recognizer! {
         f      => "^f$",
+        colon  => "^:$",
+
+        int    => "^int$",
+        float  => "^float$",
+        u8     => "^u8$",
+        u64    => "^u64$",
+        str    => "^str$",
+
         id     => "^[[:alpha:]_][[:alnum:]_]*$",
         splid  => "^[[:alpha:]_][[:alnum:]_]*#$",
         intlit => r"^[+|-]?(([0-9]+)|(0x[0-9a-f]+))$",
@@ -266,7 +272,8 @@ pub fn barelang_token_matcher_vec() -> TokenMatcherVec {
 
         lparen => r"[(]",
         rparen => r"[)]",
-        brace  => r"[\{\}]",
+        lbrace  => r"[\{]",
+        rbrace  => r"[\}]",
         sub    => r"-",
         add    => r"\+",
         mul    => r"\*",
@@ -283,39 +290,65 @@ pub fn barelang_token_matcher_vec() -> TokenMatcherVec {
 ////////////////////////////////////////////////////////////////////////////////
 //// Syntax
 
+/// LL(*)
 #[allow(non_snake_case)]
 pub fn barelang_gram() -> Gram {
     declare_nonterminal! {
         Prog,
         Block,
         BlockStmts,
-        Expr,
-        Pri,
+        BlockStmtsSpan,
+        Item,
         Stmt,
-        BlockStmt,
+        Expr,
+        ExprRem,
+        Pri,
+        Parameters,
+        ParameterList,
+        ParameterListRem,
+        Parameter,
+        Arguments,
+        ArgumentList,
+        ArgumentListRem,
+        Argument,
+        TypedId,
+        TailOptionExpr,
+        Declare,
+        Defn,
+        FunCall,
+
         BOp,
         Lit,
         Id,
-        Expr1,
-        ExprList,
-        ExprList1
+        DataType,
+        BlockStmt
     };
     // 终结符全部小写 (假装是没有分部的lower camel case)
     declare_terminal! {
-        // key
+        /* control key */
+        f,
+
+        /* primitive type key */
+        int,
+        u64,
+        u8,
+        str,
+        float,
 
         id,
         splid,
         intlit,
         dqstr,
 
-        // single char
-        lparen,    // ()
-        rparen,
-        //bracket,  // []
-        brace,    // {}
-        f,
+        /* single char */
+        lparen,    // (
+        rparen,    // )
+        // lbracket,  // [
+        // rbracket,  // ]
+        lbrace,    // {
+        rbrace,    // }
 
+        /* Infix op */
         sub,
         add,
         mul,
@@ -324,7 +357,8 @@ pub fn barelang_gram() -> Gram {
         dot,
         comma,
         eq,
-        percent  // %
+        percent,  // %,
+        colon
     };
 
 
@@ -332,61 +366,115 @@ pub fn barelang_gram() -> Gram {
 
     let barelang = grammar![barelang|
         Prog:
-        | Block;
-        | BlockStmts;
+          0 -> BlockStmts;
 
         Block:
-        | brace BlockStmts brace;
+          0 -> lbrace BlockStmts rbrace;
 
         BlockStmts:
-        | BlockStmt BlockStmts;
-        | ε;
+          0 -> BlockStmtsSpan TailOptionExpr;
+          2 -> ε;
+
+        BlockStmtsSpan:
+          0 -> BlockStmt BlockStmtsSpan;
+          1 -> ε;
 
         BlockStmt:
-        | Stmt;
-        | f id lparen ExprList rparen eq Block;
+          0 -> Item;  // defn
+          1 -> Stmt;  // a=2;
+          2 -> Block; // {...}
+
+        TailOptionExpr:
+          0 -> Expr;
+          1 -> ε;
 
         Stmt:
-        | semi;
-        | Expr semi;
+          0 -> semi;
+          1 -> Expr semi;
+          2 -> Declare semi;
+
+        Declare:
+          0 -> id eq Expr;
+          1 -> TypedId eq Expr;
+
+        Item:
+          0 -> Defn;
+
+        Defn:
+          0 -> f colon id Parameters colon DataType Block;
 
         Expr:
-        | Pri Expr1;
+          0 -> Pri ExprRem;
+          1 -> FunCall;
 
-        Expr1:
-        | BOp Pri Expr1;           // 中缀表达式仅限基本操作符, 这是为了方便起见
-        | lparen ExprList rparen;  // FunCall
-        | eq Expr;                 // Assign
-        | ε;
+        FunCall:
+          0 -> Id Arguments;
 
-        ExprList:
-        | Expr ExprList1;
-        | ε;
+        ExprRem:
+          0 -> BOp Pri ExprRem;  // 中缀表达式仅限基本操作符, 这是为了方便起见
+          1 -> ε;
 
-        ExprList1:
-        | comma Expr ExprList1;
-        | ε;
+        Parameters:
+          0 -> lparen ParameterList rparen;
+
+        ParameterList:
+          0 -> Parameter ParameterListRem;
+          1 -> ε;
+
+        ParameterListRem:
+          0 -> comma Parameter ParameterListRem;
+          1 -> ε;
+
+        Parameter:
+          0 -> TypedId;
+
+        Arguments:
+          0 -> lparen ArgumentList rparen;
+          1 -> ε;
+
+        ArgumentList:
+          0 -> Expr ArgumentListRem;
+          1 -> ε;
+
+        ArgumentListRem:
+          0 -> comma Argument ArgumentListRem;
+          1 -> ε;
+
+        Argument:
+          0 -> Expr;
 
         BOp:
-        | add;
-        | sub;
-        | mul;
-        | div;
-        | percent;
-        | dot;
+          0 -> add;
+          1 -> sub;
+          2 -> mul;
+          3 -> div;
+          4 -> percent;
+          5 -> dot;
 
         Pri:
-        | Lit;
-        | Id;
-        | lparen Expr rparen;
+          0 -> Lit;
+          1 -> Id;
+          2 -> lparen Expr rparen;
+
+        TypedId:
+          0 -> id colon DataType;
 
         Id:
-        | id;
-        | splid id;
+          0 -> id;
+          1 -> splid id;
 
         Lit:
-        | intlit;
-        | dqstr;
+          0 -> intlit;
+          1 -> dqstr;
+
+        DataType:
+          0 -> id;
+          1 -> int;
+          2 -> u64;
+          3 -> u8;
+          4 -> float;
+          5 -> str;
+
     |];
 
 

@@ -1,0 +1,10 @@
+f: print (s: str): str {
+    b=4;
+    rs#prints (s)
+}
+
+a = 2;
+
+b=3;
+
+print("Hello, Bare!")

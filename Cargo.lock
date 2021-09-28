@@ -47,6 +47,7 @@ dependencies = [
  "inkwell",
  "itertools",
  "lazy_static",
+ "m6stack",
  "regex",
  "rsc",
  "uuid",
@@ -59,6 +60,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+ "uuid",
 ]
 
 [[package]]
@@ -211,6 +213,11 @@ checksum = "0382880606dff6d15c9476c416d18690b72742aa7b605bb6dd6ec9030fbf07eb"
 dependencies = [
  "scopeguard",
 ]
+
+[[package]]
+name = "m6stack"
+version = "0.1.0"
+source = "git+https://github.com/minghu6/rust-m6stack?branch=master#fb2b4cf0a84ca6d29d9d4bdb097ac8fff6a31ce5"
 
 [[package]]
 name = "memchr"

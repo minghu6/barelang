@@ -18,6 +18,9 @@
 
 `cargo test -- --nocapture test_lex`
 
+### Parse
+
+`cargo test -- --nocapture test_parser`
 
 ## Source Structure
 

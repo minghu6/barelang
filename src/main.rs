@@ -10,6 +10,7 @@ use std::time::{
 };
 
 use bac::ml_simplifier::MLSimplifier;
+use bac::utils::PrintTy;
 // use clap::{
 //     App, Arg, SubCommand
 // };
@@ -17,23 +18,14 @@ use clap::{
     clap_app
 };
 
-use bac::rules::{
-    barelang_gram
-};
-use bac::lexer::{
-    SrcFileInfo
-};
-use bac::syntax_parser::{
-    Parser, LL1Parser
-};
-use bac::semantic_analyzer::{
-     analyze_semantic
+use bac::lexer::{SrcFileInfo, tokenize};
+use bac::manual_parser::{
+    Parser
 };
 use bac::codegen::{
     codegen
 };
 
-use bac::error::BaCErr;
 use bac::*;
 
 fn unique_suffix() -> String {
@@ -51,8 +43,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         (author: "minghu6")
         (about: "Bare Language Compiler")
         (@arg FILE: +required "input source file (exp *.ba)")
-        (@arg target_type: -t --target_type +takes_value "[bin|dylib|reloc] default: bin")
+        (@arg target_type: -t --target +takes_value "[bin|dylib|reloc] default: bin")
         (@arg emit_type: -e --emit +takes_value "[llvm-ir|asm|obj] default: obj")
+        (@arg print_type: -p --print +takes_value "[stderr|path] default: path (stderr doesn't support `emit_type: obj`)")
         (@arg O2: -O "Optimized code")
         (@arg Verbose: -V --verbose +takes_value "verbose level: 0, 1, 2")
         (@arg output: -o --output +takes_value "object file output path")
@@ -128,18 +121,35 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     match emit_type {
         EmitType::LLVMIR => {
-            let output = match matches.value_of("output") {
-                Some(output) => output,
-                None => "a.ll"
+            /* Print Type */
+            let print_type
+            = if let Some(print_type) = matches.value_of("print_type") {
+                match print_type {
+                    "path" => {
+                        let output = match matches.value_of("output") {
+                            Some(output) => output,
+                            None => "a.ll"
+                        };
+                        let objpath = PathBuf::from(output);
+
+                        PrintTy::File(objpath)
+                    },
+                    "stderr" => {
+                        PrintTy::StdErr
+                    },
+                    _ => unimplemented!()
+                }
+            }
+            else {
+                PrintTy::StdErr
             };
-            let objpath = PathBuf::from(output);
 
             let compiler_config = CompilerConfig {
                 optlv,
                 target_type,
                 file,
                 emit_type,
-                objpath
+                print_type
             };
 
             // dry run point
@@ -157,12 +167,14 @@ fn main() -> Result<(), Box<dyn Error>> {
                     tmp_out_fn.push_str(&unique_suffix());
                     let objpath = PathBuf::from(tmp_out_fn.clone());
 
+                    let print_type = PrintTy::File(objpath);
+
                     let compiler_config = CompilerConfig {
                         optlv,
                         target_type,
                         file,
                         emit_type,
-                        objpath
+                        print_type
                     };
 
                     // dry run point
@@ -197,7 +209,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
 
         },
-        _ => todo!()
+        EmitType::Asm => todo!()
     }
 
 
@@ -207,34 +219,25 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 /// Compile source code string
 pub fn compile(config: &CompilerConfig) -> Result<(), Box<dyn Error>> {
-    let gram = barelang_gram();
-    gram.do_check()?;
+    let tokens = tokenize(&config.file);
+    let tokens = tokens
+    .into_iter()
+    .filter(|tok| tok.name() != "<sp>" && !tok.name().contains("comment"))
+    .collect();
 
-    let parser = LL1Parser::new(gram);
+    let mut parser = Parser::new(tokens);
+    let ml = parser.parse()?;
 
-    match parser.parse(&config.file) {
-        Ok(ast) => {
-            if unsafe { VERBOSE >= VerboseLv::V1 } {
-                println!("AST:\n{}", ast.as_ref().borrow());
-            }
-
-            let ml = analyze_semantic(ast)?;
-            if unsafe { VERBOSE >= VerboseLv::V2 } {
-                println!("ML:\n{:#?}", ml);
-            }
-
-            let mut mlslf = MLSimplifier::new();
-            let bin = mlslf.simplify_ml(ml);
-            if unsafe { VERBOSE >= VerboseLv::V2 } {
-                println!("BaBin:\n{:#?}", bin);
-            }
-
-            codegen(&config, &bin)?;
-            Ok(())
-        },
-        Err(msg) => {
-            eprintln!("{}", msg);
-            Err(BaCErr::new_box_err(&msg))
-        }
+    if unsafe { VERBOSE >= VerboseLv::V2 } {
+        println!("ML:\n{:#?}", ml);
     }
+
+    let mlslf = MLSimplifier::new(ml);
+    let bin = mlslf.simplify();
+    if unsafe { VERBOSE >= VerboseLv::V2 } {
+        println!("BaBin:\n{:#?}", bin);
+    }
+
+    codegen(&config, bin)?;
+    Ok(())
 }

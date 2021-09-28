@@ -12,7 +12,6 @@ use std::error::Error;
 use crate::gram::*;
 use crate::rules::{LexSt, barelang_lexdfamap, barelang_token_matcher_vec};
 
-
 ////////////////////////////////////////////////////////////////////////////////
 //// Token
 
@@ -24,8 +23,8 @@ pub struct Token {
 }
 
 impl Token {
-    pub fn name(&self) -> &str {
-        &self.name
+    pub fn name(&self) -> String {
+        format!("<{}>", &self.name)
     }
 
     pub fn value(&self) -> &str {
@@ -36,21 +35,9 @@ impl Token {
         self.loc.clone()
     }
 
-    pub fn to_fst_set_sym(&self) -> FstSetSym {
-        FstSetSym::Sym(self.name.clone())
-    }
-
     /// To GramSym::Terminal
     pub fn to_gram_sym(&self) -> GramSym {
         GramSym::Terminal(self.name.clone())
-    }
-
-    pub fn to_pred_set_sym(&self) -> PredSetSym {
-        PredSetSym::Sym(self.name.clone())
-    }
-
-    pub fn to_foll_set_sym(&self) -> FollSetSym {
-        FollSetSym::Sym(self.name.clone())
     }
 }
 
@@ -142,7 +129,7 @@ impl fmt::Debug for SrcFileInfo {
 }
 
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, PartialOrd)]
 pub struct SrcLoc {
     pub ln: usize,
     pub col: usize
@@ -168,6 +155,18 @@ impl Display for SrcLoc {
         write!(f, "({}, {})", self.ln, self.col)
     }
 }
+
+impl Ord for SrcLoc {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        if self.ln == other.ln {
+            self.col.cmp(&other.col)
+        }
+        else {
+            self.ln.cmp(&other.ln)
+        }
+    }
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Char Matcher (used for string splitter)
@@ -261,6 +260,7 @@ lazy_static! {
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Lexer
+
 fn gen_token(word: &str, srcloc: SrcLoc) -> Result<Token, String> {
     for (matcher, tokn) in (*TOKEN_MATCHER_VEC).iter() {
         if matcher.is_match(word) {
@@ -324,7 +324,7 @@ pub fn tokenize(srcfile: &SrcFileInfo) -> Vec<Token> {
             }
         }
 
-        // println!("{:?} => {:?}", cur_st, found_item.1.0.clone());
+        // println!("{:?} => {:?} {}", cur_st, found_item.1.0.clone(), c);
 
         // unpack found item
         cur_st = found_item.1.0.clone();
@@ -364,7 +364,12 @@ pub fn tokenize(srcfile: &SrcFileInfo) -> Vec<Token> {
 }
 
 
-
+pub fn trim_tokens(tokens: Vec<Token>) -> Vec<Token> {
+    tokens
+    .into_iter()
+    .filter(|tok| tok.name() != "<sp>" && !tok.name().contains("comment"))
+    .collect()
+}
 
 
 
@@ -372,7 +377,7 @@ pub fn tokenize(srcfile: &SrcFileInfo) -> Vec<Token> {
 mod test {
 
     #[test]
-    fn test_lex() {
+    fn test_lexer() {
         use std::path::PathBuf;
         use itertools::Itertools;
         use crate::lexer::{
@@ -380,7 +385,7 @@ mod test {
         };
 
         let srcfile
-        = SrcFileInfo::new(PathBuf::from("./examples/exp0.ba")).unwrap();
+        = SrcFileInfo::new(PathBuf::from("./examples/exp1.ba")).unwrap();
 
         let tokens = tokenize(&srcfile);
 
@@ -388,7 +393,7 @@ mod test {
         = tokens.into_iter().filter(|tok| {
             let token_name = tok.name();
 
-            !(token_name == "sp" || token_name.ends_with("comment"))
+            !(token_name == "<sp>" || token_name.ends_with("<comment>"))
         }).collect_vec();
 
         println!("{:#?}", trimed_tokens);

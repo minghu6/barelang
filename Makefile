@@ -16,6 +16,10 @@ testexp0: build copybin
 	@./${BARE_COMPILER} ./examples/exp0.ba
 	@ ./a.out
 
+testexp1: build copybin
+	@./${BARE_COMPILER} ./examples/exp1.ba
+	@ ./a.out
+
 testforeignapi:
 	cargo test -- --nocapture test_rsclib
 
@@ -25,3 +29,6 @@ dump:
 .PHONY: clean
 clean:
 	@ rm -f *.so *.o ${BARE_COMPILER} main *.out *.d *.ll
+
+clean-out:
+	@ rm -f __barelang_output*
