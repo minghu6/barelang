@@ -3,8 +3,9 @@ use std::error::Error;
 use std::rc::Rc;
 
 use crate::make_simple_error_rules;
-use crate::datair::BaId;
-use crate::lexer::{SrcLoc, Token};
+use crate::middleware::datair::{BaId, BaPriVal};
+use crate::frontend::lexer::{SrcLoc, Token};
+
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Define Error
@@ -19,16 +20,29 @@ make_simple_error_rules!(CLIErr);
 
 #[derive(Debug)]
 pub enum TrapCode<'a> {
-    /* BaCErr */
-    UnresolvedSymbol(&'a BaId),
-    UnresolvedFn(&'a BaId),
+    /* Common */
+    ConvertFailed,
+
+    /* BaCErr etc. */
     ToBaiscTypeOnVoid,
-    UnsupportedBopOperand,
+    ToCGValOnVoid,
+
+    /* BaCErr Parse */
     UnfinishedDerivation,
     UnexpectedToken(&'a Token, &'a str),
+    UnsupportedBopOperand,
+
+    /* BaCErr Semantic Analyze */
     DuplicatedDefn(&'a BaId),
     DuplicatedDefsym(&'a BaId),
     UnableToInferType(&'a BaId),
+    UnresolvedSymbol(&'a BaId),
+    UnresolvedFn(&'a BaId),
+    PriValTryIntoIdFailed(&'a BaPriVal),
+
+    /* BaCErr Code Generation */
+    RefTypeTryIntoPureValue,
+    AssignVoid,
 
     /* RuleErr */
     AmbigousLLRule(String),
@@ -61,6 +75,13 @@ impl<'a> TrapCode<'a> {
                 BaCErr::new_box_err(
                     format!(
                         "{:?}: {:?}", self, id
+                    ).as_str()
+                )
+            },
+            Self::PriValTryIntoIdFailed(prival) => {
+                BaCErr::new_box_err(
+                    format!(
+                        "{:?}: {:?}", self, prival
                     ).as_str()
                 )
             },

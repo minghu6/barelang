@@ -1,7 +1,6 @@
-
-use itertools::Itertools;
 use regex::Regex;
 use lazy_static::lazy_static;
+use itertools::Itertools;
 
 use std::fmt::{Debug, Display};
 use std::path::PathBuf;
@@ -9,8 +8,9 @@ use std::{fmt, vec};
 use std::fs;
 use std::error::Error;
 
-use crate::gram::*;
-use crate::rules::{LexSt, barelang_lexdfamap, barelang_token_matcher_vec};
+use crate::frontend::gram::*;
+use crate::frontend::rules::{LexSt, barelang_lexdfamap, barelang_token_matcher_vec};
+
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Token
@@ -378,14 +378,15 @@ mod test {
 
     #[test]
     fn test_lexer() {
-        use std::path::PathBuf;
         use itertools::Itertools;
-        use crate::lexer::{
+
+        use std::path::PathBuf;
+        use crate::frontend::lexer::{
             tokenize, SrcFileInfo
         };
 
         let srcfile
-        = SrcFileInfo::new(PathBuf::from("./examples/exp1.ba")).unwrap();
+        = SrcFileInfo::new(PathBuf::from("./examples/exp2.ba")).unwrap();
 
         let tokens = tokenize(&srcfile);
 

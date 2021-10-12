@@ -1,9 +1,5 @@
-/// this is my exp0 prog
+//! Test basic infix arthmetic expression
 
-// atom data [] list, 2 factor map list, homomorphism
-// int is usize/isize as default, fixed,
-// a', a'', a'''
-// a1 a2 a3
 s0 = "你好，世界";
 s1 = "你好，世界
 世界真大已经是第二行了

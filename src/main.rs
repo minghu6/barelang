@@ -1,15 +1,11 @@
 use std::fs;
 use std::error::Error;
-use std::env;
-use std::path::{Path, PathBuf};
-use std::process::{
-    Command
-};
+use std::path::{ PathBuf};
 use std::time::{
     SystemTime, UNIX_EPOCH
 };
 
-use bac::ml_simplifier::MLSimplifier;
+use bac::middleware::ml_simplifier::MLSimplifier;
 use bac::utils::PrintTy;
 // use clap::{
 //     App, Arg, SubCommand
@@ -18,11 +14,11 @@ use clap::{
     clap_app
 };
 
-use bac::lexer::{SrcFileInfo, tokenize};
-use bac::manual_parser::{
+use bac::frontend::lexer::{SrcFileInfo, tokenize};
+use bac::frontend::manual_parser::{
     Parser
 };
-use bac::codegen::{
+use bac::backend::codegen::{
     codegen
 };
 
@@ -113,12 +109,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    let bare_home_str = env::var("BARE_HOME").unwrap_or(".".to_string());
-    let bare_home = fs::canonicalize(Path::new(
-        &bare_home_str
-    ))?;
-    let lib_path = bare_home.join("librsc.so");
-
     match emit_type {
         EmitType::LLVMIR => {
             /* Print Type */
@@ -190,18 +180,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         None => "a.out"
                     };
 
-                    // gcc output.o libbare.so -Xlinker -rpath ./ -o main
-                    let gcc_link_st = Command::new("gcc")
-                    .arg(tmp_out_fn.as_str())
-                    .arg(lib_path.to_str().unwrap())
-                    .arg("-Xlinker")
-                    .arg("-rpath")
-                    .arg(bare_home_str)
-                    .arg("-o")
-                    .arg(output)
-                    .status()?;
-
-                    assert!(gcc_link_st.success(), "gcc link {}", gcc_link_st);
+                    link(output, &[&tmp_out_fn])?;
 
                     fs::remove_file(tmp_out_fn)?;
                 },
@@ -233,7 +212,7 @@ pub fn compile(config: &CompilerConfig) -> Result<(), Box<dyn Error>> {
     }
 
     let mlslf = MLSimplifier::new(ml);
-    let bin = mlslf.simplify();
+    let bin = mlslf.simplify().unwrap();
     if unsafe { VERBOSE >= VerboseLv::V2 } {
         println!("BaBin:\n{:#?}", bin);
     }

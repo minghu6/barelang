@@ -13,15 +13,35 @@ genlib:
 	@ cp ./target/release/librsc.so .
 
 testexp0: build copybin
-	@./${BARE_COMPILER} ./examples/exp0.ba
+	@ ./${BARE_COMPILER} ./examples/exp0.ba
 	@ ./a.out
 
 testexp1: build copybin
-	@./${BARE_COMPILER} ./examples/exp1.ba
+	@ ./${BARE_COMPILER} ./examples/exp1.ba
+	@ ./a.out
+
+testexp2: build copybin
+	@ ./${BARE_COMPILER} ./examples/exp2.ba
 	@ ./a.out
 
 testforeignapi:
 	cargo test -- --nocapture test_rsclib
+
+testllvmcodegen:
+	cargo test -- --nocapture test_llvm_codegen
+
+testlex:
+	cargo test -- --nocapture test_lex
+
+testparser:
+	cargo test -- --nocapture test_parser
+
+testmls:
+	cargo test -- --nocapture test_ml_simplifier
+
+testcodegen:
+	cargo test -- --nocapture test_codegen
+
 
 dump:
 	@ objdump -xsd ./output.o

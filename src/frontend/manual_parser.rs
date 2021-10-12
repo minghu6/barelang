@@ -4,12 +4,12 @@ use std::rc::Rc;
 use indexmap::IndexMap;
 use m6stack::{stack, Stack};
 
-use crate::datair::*;
-use crate::datalsp::*;
+use crate::middleware::datair::*;
+use crate::frontend::datalsp::*;
 use crate::error::TrapCode;
-use crate::gram::*;
-use crate::lexer::Token;
-use crate::rules::{barelang_gram, bopprecmap};
+use crate::frontend::gram::*;
+use crate::frontend::lexer::Token;
+use crate::frontend::rules::{barelang_gram, bopprecmap};
 use crate::*;
 use crate::utils::*;
 
@@ -108,14 +108,14 @@ impl Parser {
         self.history_record.len() > 0
     }
 
-    #[inline]
-    fn verbose_enable(&self) -> bool {
-        verbose_enable_v2() && !self.is_try_mode()
-    }
+    // #[inline]
+    // fn verbose_enable(&self) -> bool {
+    //     verbose_enable_v2() && !self.is_try_mode()
+    // }
 
     #[inline]
     fn debug_running(&mut self, prod_name: &str, prod_idx: usize, step: usize) {
-        if self.verbose_enable() {
+        if verbose_enable_v2() {
             let prod_vec = self.gram.idx(prod_name);
             if prod_idx >= prod_vec.len() {
                 panic!("{}[{}] index out of bounds", prod_name, prod_idx)
@@ -134,13 +134,24 @@ impl Parser {
                 Err(_) => "<$>".to_owned()
             };
 
-            println!(
-                "{}({}){} | {}",
-                indent,
-                self.scope_level - 1,
-                running,
-                cur_tok_str
-            );
+            if self.is_try_mode() {
+                println!(
+                    "{}({}){} | {}",
+                    indent,
+                    "?",
+                    running,
+                    cur_tok_str
+                );
+            }
+            else {
+                println!(
+                    "{}({}){} | {}",
+                    indent,
+                    self.scope_level - 1,
+                    running,
+                    cur_tok_str
+                );
+            }
 
             if running.is_end() {
                 self.debug_pop();
@@ -336,18 +347,24 @@ impl Parser {
     /// ```
     fn parse_stmt(&mut self) -> Result<LspStmt, Box<dyn Error>> {
         self.record();
-        if self.parse_declare().is_ok() {
-            self.restore();
-            self.debug_running("[Stmt]", 2, 0);
+        match self.parse_declare() {
+            Ok(_) => {
+                self.restore();
+                self.debug_running("[Stmt]", 2, 0);
 
-            let declare = self.parse_declare()?;
-            self.debug_running("[Stmt]", 2, 1);
+                let declare = self.parse_declare()?;
+                self.debug_running("[Stmt]", 2, 1);
 
-            self.parse_t("<semi>")?;
-            self.debug_running("[Stmt]", 2, 2);
+                self.parse_t("<semi>")?;
+                self.debug_running("[Stmt]", 2, 2);
 
-            return Ok(LspStmt::Declare(Rc::new(declare)))
+                return Ok(LspStmt::Declare(Rc::new(declare)))
+            },
+            Err(_err) => {
+                // dbg!(_err);
+            }
         }
+
         self.restore();
 
         let tok1st = self.try_peek1()?;
@@ -420,12 +437,35 @@ impl Parser {
     /// Expr:
     ///   0 -> Pri ExprRem;
     ///   1 -> FunCall;
+    ///   2 -> iter IterCtrlScope Block;
     /// ```
     fn parse_expr(&mut self) -> Result<LspExpr, Box<dyn Error>> {
-        // check if it's a funcall;
         self.record();
 
-        if let Ok(_) = self.parse_id() {
+        if let Ok(_) = self.parse_t("<iter>") {
+            self.restore();
+            self.debug_running("[Expr]", 2, 0);
+
+            let iter = self.parse_t("<iter>")?;
+            let srcloc = iter.loc();
+            self.debug_running("[Expr]", 2, 1);
+
+            let (var_formal, var_outter) = self.parse_iter_ctrl_scope()?;
+            self.debug_running("[Expr]", 2, 2);
+
+            let ctrl_body = Rc::new(self.parse_block()?);
+            self.debug_running("[Expr]", 2, 3);
+
+            return Ok(
+                LspExpr::IterBlock(LspIterBlock {
+                    var_formal,
+                    var_outter,
+                    ctrl_body,
+                    srcloc
+                })
+            )
+        }
+        else if let Ok(_) = self.parse_id() {  // check if it's a funcall;
             if self.reach_paren_start() {
                 self.restore();
                 self.debug_running("[Expr]", 1, 0);
@@ -478,6 +518,33 @@ impl Parser {
         }
 
         Ok(expr_stack.pop().unwrap())
+    }
+
+
+    /// ```none
+    /// IterCtrlScope:
+    ///   0 -> lparen id colon Pri rparen;
+    /// ```
+    fn parse_iter_ctrl_scope(&mut self) -> Result<(String, Box<LspPri>), Box<dyn Error>> {
+        let mut auto = gen_counter();
+        self.debug_running("[IterCtrlScope]", 0, auto());
+
+        self.parse_t("<lparen>")?;
+        self.debug_running("[IterCtrlScope]", 0, auto());
+
+        let formal_id = self.parse_t_id()?;
+        self.debug_running("[IterCtrlScope]", 0, auto());
+
+        self.parse_t("<colon>")?;
+        self.debug_running("[IterCtrlScope]", 0, auto());
+
+        let pri = self.parse_pri()?;
+        self.debug_running("[IterCtrlScope]", 0, auto());
+
+        self.parse_t("<rparen>")?;
+        self.debug_running("[IterCtrlScope]", 0, auto());
+
+        Ok((formal_id.name, Box::new(pri)))
     }
 
     /// ```none
@@ -572,7 +639,7 @@ impl Parser {
 
     /// ```none
     /// Arguments:
-    ///   0 -> lparen ArgumentList rparen;
+    ///   0 -> lparen ExprList rparen;
     ///   1 -> ε;
     /// ```
     fn parse_arguments(&mut self) -> Result<Vec<LspExpr>, Box<dyn Error>> {
@@ -581,7 +648,7 @@ impl Parser {
         self.parse_t("<lparen>")?;
         self.debug_running("[Arguments]", 0, 1);
 
-        let expr_list = self.parse_argument_list()?;
+        let expr_list = self.parse_expr_list()?;
         self.debug_running("[Arguments]", 0, 2);
 
         self.parse_t("<rparen>")?;
@@ -591,52 +658,52 @@ impl Parser {
     }
 
     /// ```none
-    /// ArgumentList:
-    ///   0 -> Expr ArgumentListRem;
+    /// ExprList:
+    ///   0 -> Expr ExprListRem;
     ///   1 -> ε;
     /// ```
-    fn parse_argument_list(&mut self) -> Result<Vec<LspExpr>, Box<dyn Error>> {
-        if self.reach_paren_end() {
-            self.debug_running("[ArgumentList]", 1, 0);
+    fn parse_expr_list(&mut self) -> Result<Vec<LspExpr>, Box<dyn Error>> {
+        if self.reach_paren_end() || self.reach_bracket_end() {
+            self.debug_running("[ExprList]", 1, 0);
             return Ok(vec![]);
         }
 
-        self.debug_running("[ArgumentList]", 0, 0);
+        self.debug_running("[ExprList]", 0, 0);
 
         let argument = self.parse_expr()?;
-        self.debug_running("[ArgumentList]", 0, 1);
+        self.debug_running("[ExprList]", 0, 1);
 
-        let argument_list_rem = self.parse_argument_list_rem()?;
-        self.debug_running("[ArgumentList]", 0, 2);
+        let argument_list_rem = self.parse_expr_list_rem()?;
+        self.debug_running("[ExprList]", 0, 2);
 
         Ok(ht![argument | argument_list_rem])
     }
 
 
     /// ```none
-    /// ArgumentListRem:
-    ///   0 -> comma Argument ArgumentListRem;
+    /// ExprListRem:
+    ///   0 -> comma Expr ExprListRem;
     ///   1 -> ε;
     /// ```
-    fn parse_argument_list_rem(&mut self) -> Result<Vec<LspExpr>, Box<dyn Error>> {
-        if self.reach_paren_end() {
-            self.debug_running("[ArgumentListRem]", 1, 0);
+    fn parse_expr_list_rem(&mut self) -> Result<Vec<LspExpr>, Box<dyn Error>> {
+        if self.reach_paren_end() || self.reach_bracket_end() {
+            self.debug_running("[ExprListRem]", 1, 0);
 
             return Ok(vec![]);
         }
 
-        self.debug_running("[ArgumentListRem]", 0, 0);
+        self.debug_running("[ExprListRem]", 0, 0);
 
         self.parse_t("<comma>")?;
-        self.debug_running("[ArgumentListRem]", 0, 1);
+        self.debug_running("[ExprListRem]", 0, 1);
 
-        let argument = self.parse_expr()?;
-        self.debug_running("[ArgumentListRem]", 0, 2);
+        let expr = self.parse_expr()?;
+        self.debug_running("[ExprListRem]", 0, 2);
 
-        let argument_list_rem = self.parse_argument_list_rem()?;
-        self.debug_running("[ArgumentListRem]", 0, 3);
+        let expr_list_rem = self.parse_expr_list_rem()?;
+        self.debug_running("[ExprListRem]", 0, 3);
 
-        Ok(ht![argument | argument_list_rem])
+        Ok(ht![expr | expr_list_rem])
     }
 
     /// ```none
@@ -644,15 +711,41 @@ impl Parser {
     ///   0 -> Lit;
     ///   1 -> Id;
     ///   2 -> lparen Expr rparen;
+    ///   3 -> Vector;
     /// ```
     fn parse_pri(&mut self) -> Result<LspPri, Box<dyn Error>> {
         let tok1st = self.try_peek1()?;
 
         Ok(match tok1st.name().as_str() {
-            "<id>" | "<splid>" => {
+            "<splid>" => {
+                if self.peek2_t("<id>") {
+                    self.debug_running("[Pri]", 1, 0);
+
+                    let id = self.parse_id()?;
+                    self.debug_running("[Pri]", 1, 1);
+
+                    LspPri::Id(Rc::new(id))
+                }
+                else if self.peek2_t("<lbracket>"){
+                    self.debug_running("[Pri]", 3, 0);
+
+                    let lspvec = self.parse_vector()?;
+                    self.debug_running("[Pri]", 3, 1);
+
+                    LspPri::Vector(lspvec)
+                }
+                else {
+                    return Err(
+                        TrapCode::UnexpectedToken(self.try_peek2()?, "[Vector]")
+                        .emit_box_err()
+                    )
+                }
+
+            },
+            "<id>" => {
                 self.debug_running("[Pri]", 1, 0);
 
-                let id = self.parse_id()?;
+                let id = self.parse_t_id()?;
                 self.debug_running("[Pri]", 1, 1);
 
                 LspPri::Id(Rc::new(id))
@@ -670,15 +763,50 @@ impl Parser {
                 self.debug_running("[Pri]", 2, 3);
 
                 LspPri::Expr(Rc::new(expr))
-            }
-            _ => {
+            },
+            "<intlit>" | "<dqstr>" => {
                 self.debug_running("[Pri]", 0, 0);
 
                 let lit = self.parse_lit()?;
                 self.debug_running("[Pri]", 0, 1);
 
                 LspPri::Lit(lit)
+            },
+            _ => {
+                return Err(
+                    TrapCode::UnexpectedToken(tok1st, "[Vector]")
+                    .emit_box_err()
+                )
             }
+        })
+    }
+
+    /// ```none
+    /// Vector:
+    ///   0 -> splid lbracket ExprList rbracket;
+    /// ```
+    fn parse_vector(&mut self) -> Result<LspVector, Box<dyn Error>> {
+        self.debug_running("[Vector]", 0, 0);
+
+        let splid = self.parse_t_splid()?;
+        self.debug_running("[Vector]", 0, 1);
+
+        let lbracket = self.parse_t("<lbracket>")?;
+        let srcloc = lbracket.loc();
+        drop(lbracket);
+
+        self.debug_running("[Vector]", 0, 2);
+
+        let exprlist = self.parse_expr_list()?;
+        self.debug_running("[Vector]", 0, 3);
+
+        self.parse_t("<rbracket>")?;
+        self.debug_running("[Vector]", 0, 4);
+
+        Ok(LspVector {
+            splid,
+            elems: exprlist,
+            srcloc
         })
     }
 
@@ -870,7 +998,7 @@ impl Parser {
             "<str>" => {
                 self.debug_running("[DataType]", 5, 0);
 
-                BaType::Str
+                BaType::RawStr
             },
             "<id>" => {
                 self.debug_running("[DataType]", 0, 0);
@@ -955,6 +1083,14 @@ impl Parser {
         }
     }
 
+    fn reach_bracket_end(&self) -> bool {
+        if let Ok(tok) = self.try_peek1() {
+            tok.name() == "<rbracket>"
+        } else {
+            false
+        }
+    }
+
     ////////////////////////////////////////////////////////////////////////////////
     //// Parse Token
 
@@ -977,6 +1113,7 @@ impl Parser {
 
         Ok(match tok1st.value() {
             "rs#" => BaSplId::RS,
+            "arr#" => BaSplId::Arr,
             _ => unimplemented!("{}", tok1st),
         })
     }
@@ -1029,7 +1166,12 @@ impl Parser {
 
     fn parse_t_dqstr(&mut self) -> Result<BaLit, Box<dyn Error>> {
         let tok = self.advance()?;
-        let strv = String::from(tok.value());
+        let strv
+        = tok
+        .value()
+        .trim_start_matches("\"")
+        .trim_end_matches("\"")
+        .to_owned();
 
         Ok(BaLit::Str(BaStr {
             val: strv,
@@ -1043,8 +1185,8 @@ mod test {
 
     use std::path::PathBuf;
 
-    use crate::lexer::{tokenize, SrcFileInfo};
-    use crate::manual_parser::Parser;
+    use crate::frontend::lexer::{tokenize, SrcFileInfo};
+    use crate::frontend::manual_parser::Parser;
     use crate::{VerboseLv, VERBOSE};
 
     #[test]
@@ -1058,7 +1200,7 @@ mod test {
     fn test_parser() {
         unsafe { VERBOSE = VerboseLv::V2 };
 
-        let file = SrcFileInfo::new(PathBuf::from("./examples/exp1.ba")).unwrap();
+        let file = SrcFileInfo::new(PathBuf::from("./examples/exp2.ba")).unwrap();
 
         let tokens = tokenize(&file);
         let tokens = tokens

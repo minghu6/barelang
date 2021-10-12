@@ -13,10 +13,10 @@ use indexmap::IndexMap;
 use regex::NoExpand;
 
 use crate::error::BaCErr;
-use crate::lexer::{
+use crate::frontend::lexer::{
     Token, SrcLoc
 };
-use crate::datair::*;
+use crate::middleware::datair::*;
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -143,7 +143,7 @@ pub struct LspBlock {
 pub enum LspExpr {
     Pri(LspPri),
     FunCall(LspFunCall),
-
+    IterBlock(LspIterBlock),
     TwoPri(LspBOp, Rc<LspExpr>, Rc<LspExpr>)
 }
 
@@ -158,10 +158,12 @@ impl GetLoc for LspExpr  {
             },
             Self::TwoPri(_bop, fstpri, _sndpri) => {
                 fstpri.get_loc()
-            }
+            },
+            Self::IterBlock(iterblock) => iterblock.srcloc.clone()
         }
     }
 }
+
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -171,7 +173,8 @@ impl GetLoc for LspExpr  {
 pub enum LspPri {
     Lit(BaLit),
     Id(Rc<BaId>),
-    Expr(Rc<LspExpr>)
+    Expr(Rc<LspExpr>),
+    Vector(LspVector),
 }
 
 impl GetLoc for LspPri {
@@ -185,6 +188,9 @@ impl GetLoc for LspPri {
             },
             Self::Id(id_rc) => {
                 id_rc.as_ref().loc.clone()
+            },
+            Self::Vector(vec) => {
+                vec.srcloc.clone()
             }
         }
     }
@@ -202,6 +208,20 @@ impl LspPri {
 }
 
 
+
+////////////////////////////////////////////////////////////////////////////////
+//// LspIterBlock
+
+#[derive(Debug, Clone)]
+pub struct LspIterBlock {
+    pub var_formal: String,
+    pub var_outter: Box<LspPri>,
+    pub ctrl_body: Rc<LspBlock>,
+    pub srcloc: SrcLoc
+}
+
+
+
 ////////////////////////////////////////////////////////////////////////////////
 //// LspLit
 
@@ -212,6 +232,7 @@ pub struct LspLit {
 
     pub loc: SrcLoc
 }
+
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -228,6 +249,7 @@ impl GetLoc for LspDeclare {
         self.id.loc.clone()
     }
 }
+
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -252,9 +274,20 @@ impl GetLoc for LspFunCall {
 }
 
 
-
 ////////////////////////////////////////////////////////////////////////////////
 //// LspBOp
 
 type LspBOp = BaBOp;
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+//// LspVector
+
+#[derive(Debug, Clone)]
+pub struct LspVector {
+    pub splid: BaSplId,
+    pub elems: Vec<LspExpr>,
+    pub srcloc: SrcLoc
+}
 

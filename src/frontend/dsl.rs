@@ -10,7 +10,7 @@
 #[macro_export]
 macro_rules! declare_terminal {
     ($name:ident) => {
-        let $name = $crate::gram::GramSym::Terminal(
+        let $name = $crate::frontend::gram::GramSym::Terminal(
             stringify!($name).to_string()
         );
     };
@@ -27,7 +27,7 @@ macro_rules! declare_terminal {
 #[macro_export]
 macro_rules! declare_nonterminal {
     ($name:ident) => {
-        let $name = $crate::gram::GramSym::NonTerminal(
+        let $name = $crate::frontend::gram::GramSym::NonTerminal(
             stringify!($name).to_string()
         );
     };
@@ -59,10 +59,10 @@ macro_rules! grammar {
     |] =>
     {
         {
-            let mut _grammar = $crate::gram::Gram::new(stringify!($gram_name));
+            let mut _grammar = $crate::frontend::gram::Gram::new(stringify!($gram_name));
             $(
                 $(
-                    let mut gram_str_vec = Vec::<$crate::gram::GramSym>::new();
+                    let mut gram_str_vec = Vec::<$crate::frontend::gram::GramSym>::new();
                     let mut has_epsilon = false;
 
                     $(
@@ -74,13 +74,13 @@ macro_rules! grammar {
                     )+
 
                     let gramsymstr = if has_epsilon {
-                        $crate::gram::GramSymStr::Epsilon
+                        $crate::frontend::gram::GramSymStr::Epsilon
                      } else {
-                        $crate::gram::GramSymStr::Str(gram_str_vec)
+                        $crate::frontend::gram::GramSymStr::Str(gram_str_vec)
                      };
 
                     _grammar.insert_prod(
-                        $crate::gram::GramProd {
+                        $crate::frontend::gram::GramProd {
                             lfsym: $name.clone(),
                             rhstr: gramsymstr
                         }
@@ -142,66 +142,5 @@ macro_rules! token_recognizer {
             _vec
         }
     }
-}
-
-#[macro_export]
-macro_rules! ht {
-    ( $head_lit:literal | $tail_lit:expr ) => {
-        {
-            let mut _vec = vec![$head_lit];
-            _vec.extend($tail_lit.iter().cloned());
-            _vec
-        }
-    };
-    ( $head_lit:literal | $tail:ident ) => {
-        {
-            let mut _vec = vec![$head_lit];
-            _vec.extend($tail.iter().cloned());
-            _vec
-        }
-    };
-    ( $head:ident | $tail_lit:literal ) => {
-        {
-            let tail = $tail_lit;
-            $ht![$head | $tail]
-        }
-    };
-    ( $head:ident | $tail:ident ) => {
-        {
-            let mut _vec = vec![$head];
-            _vec.extend($tail.iter().cloned());
-            _vec
-        }
-    };
-    ( $head:ident | $tail:expr ) => {
-        {
-            let mut _vec = vec![$head];
-            _vec.extend($tail.iter().cloned());
-            _vec
-        }
-    };
-    ( $head:expr, | $tail:expr ) => {
-        {
-            let mut _vec = vec![$head];
-            _vec.extend($tail.iter().cloned());
-            _vec
-        }
-    };
-    ( $head: ident) => {
-        {
-            vec![$head]
-        }
-    };
-    ( $head: expr) => {
-        {
-            vec![$head]
-        }
-    };
-    ( $head: ident) => {
-        {
-            vec![$head]
-        }
-    }
-
 }
 

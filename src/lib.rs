@@ -3,27 +3,30 @@
 #![feature(destructuring_assignment)]
 #![feature(let_chains)]
 #![feature(option_get_or_insert_default)]
+#![feature(path_file_prefix)]
 
 #![allow(mixed_script_confusables)]
 #![allow(incomplete_features)]
 
-pub mod gram;
-pub mod rules;
-pub mod dsl;
-pub mod lexer;
-pub mod ml_simplifier;
-pub mod manual_parser;
-pub mod datalsp;
-pub mod datair;
-pub mod datacg;
-pub mod codegen;
-pub mod rsclib;
+pub mod frontend;
+pub mod middleware;
+pub mod backend;
+
 pub mod utils;
 pub mod error;
+pub mod rsclib;
 pub mod dbi;
 
 
-use lexer::SrcFileInfo;
+use std::path::{
+    Path, PathBuf
+};
+use std::env;
+use std::fs;
+use std::process::{Command, Stdio};
+use std::error::Error;
+
+use frontend::lexer::SrcFileInfo;
 pub use proc_macros::{
     make_vec_macro_rules,
     make_char_matcher_rules,
@@ -31,7 +34,7 @@ pub use proc_macros::{
     make_simple_error_rules,
     //ht
 };
-use utils::PrintTy;
+use utils::{ PrintTy, RunningError };
 
 make_vec_macro_rules!(vecdeq , std::collections::VecDeque, push_back);
 
@@ -59,7 +62,7 @@ pub fn verbose_enable_v1() -> bool {
 ///////////////////////////////////////////////////////////////////////////
 //// Compiler Config
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 pub enum OptLv {
     Debug,
     Opt(usize)
@@ -121,6 +124,78 @@ impl CompilerConfig {
 
     pub fn dirname(&self) -> String {
         self.file.get_path().parent().unwrap().to_string_lossy().to_string()
+    }
+}
+
+/// BareLang Installed Home
+pub fn bare_home() -> PathBuf {
+    let bare_home_str
+    = env::var("BARE_HOME").unwrap_or(".".to_string());
+
+    fs::canonicalize(Path::new(
+        &bare_home_str
+    )).unwrap()
+}
+
+/// Full path of librsc.so
+pub fn lib_path() -> PathBuf {
+    bare_home().join("librsc.so")
+}
+
+
+/// ```none
+/// Default Args:
+///   * input object name: output.o
+///   * input dir: .
+///
+/// ```
+pub fn link_default(output: &str) -> Result<(), Box<dyn Error>> {
+    link(output, &["output.o"])
+}
+
+
+pub fn link(output: &str, input_list: &[&str]) -> Result<(), Box<dyn Error>> {
+    // gcc output.o libbare.so -Xlinker -rpath ./ -o main
+
+    let mut link_proc = Command::new("gcc")
+    .args(input_list)
+    .arg(lib_path().to_str().unwrap())
+    .arg("-Xlinker")
+    .arg("-rpath")
+    .arg(bare_home().as_os_str().to_str().unwrap())
+    .arg("-o")
+    .arg(output)
+    .stdin(Stdio::null())
+    .stdout(Stdio::inherit())
+    .spawn()?;
+
+    let exit_st = link_proc.wait()?;
+    if exit_st.success() {
+        Ok(())
+    }
+    else {
+        Err(RunningError::as_box_err(exit_st.code().unwrap()))
+    }
+}
+
+
+pub fn run_bin(output: &str) -> Result<(), Box<dyn Error>> {
+    // Run Test
+    let exit_st = Command::new(&format!("./{}", output))
+    .stdin(Stdio::null())
+    .stdout(Stdio::inherit())
+    .status()?;
+
+    if exit_st.success() {
+        Ok(())
+    }
+    else {
+        Err(RunningError::as_box_err(
+            match exit_st.code() {
+                Some(code) => code,
+                None => -1
+            }
+        ))
     }
 }
 

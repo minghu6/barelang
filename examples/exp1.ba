@@ -1,10 +1,20 @@
+//! Test defn 0
+
+f: print2 (s: str): str {
+    print1 (s)
+}
+
+f: print1 (s: str): str {
+    print (s)
+}
+
 f: print (s: str): str {
-    b=4;
     rs#prints (s)
 }
 
-a = 2;
 
-b=3;
+// a0 = [1, 2];
 
-print("Hello, Bare!")
+print2("\"Hello, Bare!");
+
+rs#printi(12);

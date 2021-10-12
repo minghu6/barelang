@@ -400,7 +400,7 @@ mod test {
     use indexmap::{IndexMap, IndexSet, indexmap, indexset};
     use itertools::Itertools;
 
-    use crate::rules::barelang_gram;
+    use crate::frontend::rules::barelang_gram;
 
     use super::Gram;
 

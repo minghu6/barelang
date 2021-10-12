@@ -4,13 +4,14 @@ use indexmap::{IndexMap, indexmap};
 use lazy_static::lazy_static;
 
 use crate::*;
-use crate::datair::BaBOp;
-use crate::gram::Gram;
-use crate::lexer::{
+use crate::middleware::datair::BaBOp;
+use crate::frontend::gram::Gram;
+use crate::frontend::lexer::{
     CharMatcher, RegexCharMatcher, SimpleCharMatcher,
     LexDFAMapType,
     TokenMatcherVec, RegexTokenMatcher
 };
+
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Tokenizer-0 (Only Split)
@@ -18,7 +19,7 @@ use crate::lexer::{
 make_char_matcher_rules! {
     ident       => "[[:alnum:]_]"    | r,
     ident_head  => "[[:alpha:]_]"    | r,
-    delimiter   => "[,|;|:]"           | r,
+    delimiter   => "[,|;|:]"         | r,
     num         => "[[:digit:]]"     | r,
     numsign     => "[+|-]"           | r,
     op          => r#"[\+|\-|\*|/|%|\^|\||&|~|!|?|@|>|=|<|\.]"# | r,
@@ -164,7 +165,8 @@ pub fn barelang_lexdfamap() -> LexDFAMapType {
             op_m          | LexSt::Op,        true
         },
         LexSt::SplIdent => {
-            ident_head_m  | LexSt::IdentName, true
+            ident_head_m  | LexSt::IdentName,   true
+            parenthesis_m | LexSt::Parenthesis, true
         },
         LexSt::Op => {
             op_m          | LexSt::Op,          false
@@ -253,6 +255,7 @@ pub fn barelang_lexdfamap() -> LexDFAMapType {
 pub fn barelang_token_matcher_vec() -> TokenMatcherVec {
     token_recognizer! {
         f      => "^f$",
+        iter   => "^iter$",
         colon  => "^:$",
 
         int    => "^int$",
@@ -272,8 +275,10 @@ pub fn barelang_token_matcher_vec() -> TokenMatcherVec {
 
         lparen => r"[(]",
         rparen => r"[)]",
-        lbrace  => r"[\{]",
-        rbrace  => r"[\}]",
+        lbracket => r"[\[]",
+        rbracket => r"[\]]",
+        lbrace => r"[\{]",
+        rbrace => r"[\}]",
         sub    => r"-",
         add    => r"\+",
         mul    => r"\*",
@@ -308,14 +313,15 @@ pub fn barelang_gram() -> Gram {
         ParameterListRem,
         Parameter,
         Arguments,
-        ArgumentList,
-        ArgumentListRem,
-        Argument,
         TypedId,
         TailOptionExpr,
         Declare,
         Defn,
         FunCall,
+        ExprList,
+        ExprListRem,
+        IterCtrlScope,
+        Vector,
 
         BOp,
         Lit,
@@ -327,6 +333,7 @@ pub fn barelang_gram() -> Gram {
     declare_terminal! {
         /* control key */
         f,
+        iter,
 
         /* primitive type key */
         int,
@@ -343,8 +350,8 @@ pub fn barelang_gram() -> Gram {
         /* single char */
         lparen,    // (
         rparen,    // )
-        // lbracket,  // [
-        // rbracket,  // ]
+        lbracket,  // [
+        rbracket,  // ]
         lbrace,    // {
         rbrace,    // }
 
@@ -406,6 +413,10 @@ pub fn barelang_gram() -> Gram {
         Expr:
           0 -> Pri ExprRem;
           1 -> FunCall;
+          2 -> iter IterCtrlScope Block;
+
+        IterCtrlScope:
+          0 -> lparen id colon Pri rparen;
 
         FunCall:
           0 -> Id Arguments;
@@ -429,19 +440,8 @@ pub fn barelang_gram() -> Gram {
           0 -> TypedId;
 
         Arguments:
-          0 -> lparen ArgumentList rparen;
+          0 -> lparen ExprList rparen;
           1 -> ε;
-
-        ArgumentList:
-          0 -> Expr ArgumentListRem;
-          1 -> ε;
-
-        ArgumentListRem:
-          0 -> comma Argument ArgumentListRem;
-          1 -> ε;
-
-        Argument:
-          0 -> Expr;
 
         BOp:
           0 -> add;
@@ -455,6 +455,19 @@ pub fn barelang_gram() -> Gram {
           0 -> Lit;
           1 -> Id;
           2 -> lparen Expr rparen;
+          // 3 -> lbracket ExprList rbracket;
+          3 -> Vector;
+
+        Vector:
+          0 -> splid lbracket ExprList rbracket;
+
+        ExprList:
+          0 -> Expr ExprListRem;
+          1 -> ε;
+
+        ExprListRem:
+          0 -> comma Expr ExprListRem;
+          1 -> ε;
 
         TypedId:
           0 -> id colon DataType;

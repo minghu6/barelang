@@ -3,7 +3,7 @@ use inkwell::{context::Context, types::FunctionType};
 use lazy_static::lazy_static;
 use indexmap::{IndexMap, indexmap};
 
-use crate::datair::{ExRefFunProto, ExRefType};
+use crate::middleware::datair::{ExRefFunProto, CTy};
 
 pub type ExFunTypeGetter = fn(ctx: &Context) -> FunctionType;
 
@@ -16,16 +16,16 @@ lazy_static! {
         "printi" => ExRefFunProto {
             name: "printi".to_owned(),
             params: vec![
-                ExRefType::I32
+                CTy::I32
             ],
-            ret: ExRefType::I32
+            ret: CTy::I32
         },
         "prints" => ExRefFunProto {
             name: "prints".to_owned(),
             params: vec![
-                ExRefType::Str
+                CTy::CStr
             ],
-            ret: ExRefType::Str
+            ret: CTy::CStr
         }
     };
 }

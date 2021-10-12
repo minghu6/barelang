@@ -1,0 +1,11 @@
+//! Test Array, Iter
+
+a0 = arr#[1, 2, 3];
+
+iter (x:a0) {
+    rs#prints("abc")
+};
+
+iter (x:a0) {
+    rs#printi(x+2)
+};

@@ -1,6 +1,7 @@
 //! IR Data (Non Recursive)
 #![allow(unused_imports)]
 
+use std::convert::{TryFrom, TryInto};
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::fmt;
@@ -11,8 +12,9 @@ use inkwell::values::BasicValueEnum;
 use itertools::Itertools;
 
 use crate::error::TrapCode;
-use crate::lexer::{SrcLoc, Token};
-use crate::manual_parser::BOP_PREC_MAP;
+use crate::frontend::lexer::{SrcLoc, Token};
+use crate::frontend::manual_parser::BOP_PREC_MAP;
+
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Common Trait
@@ -160,7 +162,8 @@ pub enum BaLit {
     I32(BaI32),
     U8(BaU8),
     Float(BaFloat), // 64 bit float
-    Str(BaStr)      // Unicode String
+    Str(BaStr),     // Unicode String
+
 }
 
 impl ToBaType for BaLit {
@@ -171,7 +174,7 @@ impl ToBaType for BaLit {
             Self::I64(_) => BaType::I64,
             Self::USize(_) => BaType::USize,
             Self::U8(_) => BaType::U8,
-            Self::Str(_) => BaType::Str
+            Self::Str(_) => BaType::RawStr
         }
     }
 }
@@ -200,7 +203,8 @@ pub enum BaType {
     U8,
     Float,
     VoidUnit,   // Rust Unit,
-    Str,
+    RawStr,
+    Arr(Box<Self>),
     Customized(Rc<BaId>),
     ExRefFunProto(ExRefFunProto)
 }
@@ -242,6 +246,7 @@ impl std::hash::Hash for BaType {
 }
 
 
+
 ////////////////////////////////////////////////////////////////////////////////
 //// BaPriVal
 
@@ -249,6 +254,18 @@ impl std::hash::Hash for BaType {
 pub enum BaPriVal {
     Lit(BaLit),
     Id(BaId),
+    Vector(BaVector)
+}
+
+impl TryInto<BaId> for BaPriVal {
+    type Error = Box<dyn Error>;
+
+    fn try_into(self) -> Result<BaId, Self::Error> {
+        match self {
+            Self::Id(id) => Ok(id),
+            _ => Err(TrapCode::PriValTryIntoIdFailed(&self).emit_box_err())
+        }
+    }
 }
 
 impl GetBaType for BaPriVal {
@@ -263,7 +280,7 @@ impl GetBaType for BaPriVal {
                 }
             },
             Self::Lit(lit) => Some(lit.to_batype()),
-
+            Self::Vector(vec) => vec.get_batype()
         }
     }
 }
@@ -272,10 +289,72 @@ impl GetLoc for BaPriVal {
     fn get_loc(&self) -> SrcLoc {
         match &self {
             Self::Lit(lit) => lit.get_loc(),
-            Self::Id(id) => id.get_loc()
+            Self::Id(id) => id.get_loc(),
+            Self::Vector(vec) => vec.get_loc()
         }
     }
 }
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+//// BaVector
+
+#[derive(Debug, Clone)]
+pub enum BaVector {
+    Array(BaArray)
+}
+
+impl GetBaType for BaVector {
+    fn get_batype(&self) -> Option<BaType> {
+        match &self {
+            Self::Array(barr) => {
+                barr.get_batype()
+            }
+        }
+    }
+}
+
+impl GetLoc for BaVector {
+    fn get_loc(&self) -> SrcLoc {
+        match &self {
+            Self::Array(barr) => {
+                barr.get_loc()
+            }
+        }
+    }
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+//// BaArray
+
+#[derive(Debug, Clone)]
+pub struct BaArray {
+    pub ty: Option<BaType>,
+    pub elems: Vec<BaPriVal>,
+    pub srcloc: SrcLoc
+}
+
+impl GetBaType for BaArray {
+    fn get_batype(&self) -> Option<BaType> {
+        if let Some(ty) = &self.ty {
+            Some(BaType::Arr(Box::new(ty.clone())))
+        }
+        else {
+            None
+        }
+    }
+}
+
+impl GetLoc for BaArray {
+    fn get_loc(&self) -> SrcLoc {
+        self.srcloc.clone()
+    }
+}
+
+
 
 ////////////////////////////////////////////////////////////////////////////////
 //// BaFunCall
@@ -333,6 +412,7 @@ impl GetLoc for BaFunCall {
     }
 }
 
+
 ////////////////////////////////////////////////////////////////////////////////
 //// BaId
 
@@ -365,6 +445,7 @@ impl GetLoc for BaId {
 #[derive(Debug, Clone)]
 pub enum BaSplId {
     RS,
+    Arr
 }
 
 
@@ -423,7 +504,9 @@ pub enum BaStmt {
     Declare(BaDeclare),
     DefFun(BaDefFun),
     FunCall(BaFunCall),
-    Block(Rc<RefCell<BaScope>>)
+    Block(Rc<RefCell<BaScope>>),
+    // TwoAddr: Ignore
+    IterBlock(BaIterBlock)
 }
 
 impl From<BaDeclare> for BaStmt {
@@ -432,6 +515,17 @@ impl From<BaDeclare> for BaStmt {
     }
 }
 
+impl TryFrom<BaDecVal> for BaStmt {
+    type Error = Box<dyn Error>;
+
+    fn try_from(decval: BaDecVal) -> Result<Self, Self::Error> {
+        Ok(match decval {
+            BaDecVal::FunCall(funcall) => BaStmt::FunCall(funcall),
+            BaDecVal::IterBlock(iterblock) => BaStmt::IterBlock(iterblock),
+            _ => return Err(TrapCode::ConvertFailed.emit_box_err()),
+        })
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 //// BaDeclare
@@ -448,7 +542,7 @@ pub struct BaDeclare {
 pub enum BaDecVal {
     PriVal(BaPriVal),
     FunCall(BaFunCall),
-
+    IterBlock(BaIterBlock),
     /// two operand should be same type
     TwoAddr(BaBOp, BaPriVal, BaPriVal)
 }
@@ -464,7 +558,8 @@ impl BaDecVal {
             },
             Self::TwoAddr(_bop, fst, _snd) => {
                 fst.get_batype().unwrap().clone()
-            }
+            },
+            Self::IterBlock(iterblk) => iterblk.get_batype().unwrap()
         }
     }
 }
@@ -474,7 +569,8 @@ impl GetBaType for BaDecVal {
         match &self {
             Self::FunCall(funcall) => funcall.get_ret_type(),
             Self::PriVal(prival) => prival.get_batype(),
-            Self::TwoAddr(_bop, fstpti, _sndpri) => fstpti.get_batype()
+            Self::TwoAddr(_bop, fstpti, _sndpri) => fstpti.get_batype(),
+            Self::IterBlock(iterblk) => iterblk.get_batype()
         }
     }
 }
@@ -486,7 +582,8 @@ impl GetLoc for BaDecVal {
             Self::PriVal(prival) => prival.get_loc(),
             Self::TwoAddr(_bop, fstpti, _sndpri) => {
                 fstpti.get_loc()
-            }
+            },
+            Self::IterBlock(iterblk) => iterblk.srcloc.clone()
         }
     }
 }
@@ -499,6 +596,25 @@ impl GetLoc for BaDecVal {
 pub struct BaDefFun {
     pub hdr: BaFunHdr,
     pub body: Rc<RefCell<BaScope>>
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//// BaIterBlock
+
+#[derive(Debug, Clone)]
+pub struct BaIterBlock {
+    pub var_formal: String,
+    pub var_outter: BaPriVal,
+    pub body: Rc<RefCell<BaScope>>,
+    pub srcloc: SrcLoc
+}
+
+
+impl GetBaType for BaIterBlock {
+    fn get_batype(&self) -> Option<BaType> {
+        Some(BaType::VoidUnit)
+    }
 }
 
 
@@ -573,24 +689,24 @@ pub struct SymItem {
 
 
 ////////////////////////////////////////////////////////////////////////////////
-//// External Reference
+//// External C Type
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ExRefType {
+pub enum CTy {
     I64,
     I32,
     F64,
-    Str,
+    CStr,  // char*
     Void
 }
 
-impl ExRefType {
+impl CTy {
     pub fn as_type(&self) -> BaType {
         match &self {
             Self::F64 => BaType::Float,
             Self::I64 => BaType::I64,
             Self::I32 => BaType::Int,
-            Self::Str => BaType::Str,
+            Self::CStr => BaType::RawStr,
             Self::Void => BaType::VoidUnit
         }
     }
@@ -599,6 +715,6 @@ impl ExRefType {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExRefFunProto {
     pub name: String,
-    pub params: Vec<ExRefType>,
-    pub ret: ExRefType,
+    pub params: Vec<CTy>,
+    pub ret: CTy,
 }
