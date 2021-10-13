@@ -2,10 +2,23 @@
 
 a0 = arr#[1, 2, 3];
 
-iter (x:a0) {
-    rs#prints("abc")
-};
+// iter (x:a0) {
+//     rs#prints("abc");
+//     rs#prints("def
+//     ");
+
+// };
 
 iter (x:a0) {
-    rs#printi(x+2)
+    iter (y:a0) {
+        iter (z:a0) {
+            rs#printi(x*y*z);
+            rs#prints(" ")
+        }
+    };
 };
+
+rs#prints(rs#prints("\t你好"));
+
+rs#prints("
+")

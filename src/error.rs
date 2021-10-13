@@ -3,7 +3,7 @@ use std::error::Error;
 use std::rc::Rc;
 
 use crate::make_simple_error_rules;
-use crate::middleware::datair::{BaId, BaPriVal};
+use crate::middleware::datair::{BaDecVal, BaId, BaPriVal};
 use crate::frontend::lexer::{SrcLoc, Token};
 
 
@@ -20,12 +20,11 @@ make_simple_error_rules!(CLIErr);
 
 #[derive(Debug)]
 pub enum TrapCode<'a> {
-    /* Common */
-    ConvertFailed,
-
     /* BaCErr etc. */
     ToBaiscTypeOnVoid,
     ToCGValOnVoid,
+    UnsupportedDecValToPri(&'a BaDecVal),
+    UnableToInferParamType(&'a BaPriVal),
 
     /* BaCErr Parse */
     UnfinishedDerivation,

@@ -367,19 +367,19 @@ pub struct BaFunCall {
 }
 
 impl BaFunCall {
-    pub fn get_ret_type(&self) -> Option<BaType> {
-        if let Some(ty) = &self.name.ty {
-            match ty {
-                BaType::ExRefFunProto(exref_proto) => {
-                    Some(exref_proto.ret.as_type())
-                },
-                _ => unreachable!()
-            }
-        }
-        else {
-            None
-        }
-    }
+    // pub fn get_ret_type(&self) -> Option<BaType> {
+    //     if let Some(ty) = &self.name.ty {
+    //         match ty {
+    //             BaType::ExRefFunProto(exref_proto) => {
+    //                 Some(exref_proto.ret.as_type())
+    //             },
+    //             _ => unreachable!()
+    //         }
+    //     }
+    //     else {
+    //         None
+    //     }
+    // }
 
     pub fn get_fun_key(&self) -> Result<BaFunKey, Box<dyn Error>> {
         let mut collector = vec![];
@@ -522,7 +522,7 @@ impl TryFrom<BaDecVal> for BaStmt {
         Ok(match decval {
             BaDecVal::FunCall(funcall) => BaStmt::FunCall(funcall),
             BaDecVal::IterBlock(iterblock) => BaStmt::IterBlock(iterblock),
-            _ => return Err(TrapCode::ConvertFailed.emit_box_err()),
+            _ => return Err(TrapCode::UnsupportedDecValToPri(&decval).emit_box_err()),
         })
     }
 }
@@ -543,31 +543,14 @@ pub enum BaDecVal {
     PriVal(BaPriVal),
     FunCall(BaFunCall),
     IterBlock(BaIterBlock),
-    /// two operand should be same type
+    // two operand should be same type
     TwoAddr(BaBOp, BaPriVal, BaPriVal)
-}
-
-impl BaDecVal {
-    pub fn to_type(&self) -> BaType {
-        match &self {
-            Self::FunCall(funcall) => {
-                funcall.get_ret_type().unwrap().clone()
-            },
-            Self::PriVal(prival) => {
-                prival.get_batype().unwrap().clone()
-            },
-            Self::TwoAddr(_bop, fst, _snd) => {
-                fst.get_batype().unwrap().clone()
-            },
-            Self::IterBlock(iterblk) => iterblk.get_batype().unwrap()
-        }
-    }
 }
 
 impl GetBaType for BaDecVal {
     fn get_batype(&self) -> Option<BaType> {
         match &self {
-            Self::FunCall(funcall) => funcall.get_ret_type(),
+            Self::FunCall(funcall) => Some(funcall.ret.clone()),
             Self::PriVal(prival) => prival.get_batype(),
             Self::TwoAddr(_bop, fstpti, _sndpri) => fstpti.get_batype(),
             Self::IterBlock(iterblk) => iterblk.get_batype()
@@ -587,6 +570,7 @@ impl GetLoc for BaDecVal {
         }
     }
 }
+
 
 
 ////////////////////////////////////////////////////////////////////////////////

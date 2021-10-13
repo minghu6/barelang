@@ -502,11 +502,15 @@ impl MLSimplifier {
             let (decval, arg_decs) = self.simplify_expr(arg)?;
             new_decs.extend(arg_decs.into_iter());
 
+            // dbg!(&decval);
+
             match decval {
                 BaDecVal::PriVal(prival) => {
                     new_args.push(prival);
                 }
                 _ => {
+                    // dbg!(&decval, decval.get_batype());
+
                     let id = BaId {
                         name: gensym_rand(),
                         splid: None,
@@ -528,7 +532,7 @@ impl MLSimplifier {
 
         // dbg!(&new_args);
 
-        let funkey = BaFunKey::from((&lspfuncall.name.name, &new_args));
+        let funkey = BaFunKey::try_from((&lspfuncall.name.name, &new_args))?;
 
         let ret = if let Some(ret) = self.funtbl.get(&funkey) {
             ret.ty.clone()
@@ -549,6 +553,8 @@ impl MLSimplifier {
             args: new_args,
             ret,
         };
+
+        // dbg!(&new_funcall);
 
         let decval = BaDecVal::FunCall(new_funcall);
 
@@ -606,16 +612,25 @@ impl MLSimplifier {
 ////////////////////////////////////////////////////////////////////////////////
 //// Structure Enhancement
 
-impl From<(&String, &Vec<BaPriVal>)> for BaFunKey {
-    fn from(input: (&String, &Vec<BaPriVal>)) -> Self {
-        Self(
+impl TryFrom<(&String, &Vec<BaPriVal>)> for BaFunKey {
+    type Error = Box<dyn Error>;
+
+    fn try_from(input: (&String, &Vec<BaPriVal>)) -> Result<Self, Self::Error> {
+        let mut args = vec![];
+
+        for prival in input.1.iter() {
+            if let Some(batty) = prival.get_batype() {
+                args.push(batty)
+            }
+            else {
+                return Err(TrapCode::UnableToInferParamType(prival).emit_box_err())
+            }
+        }
+
+        Ok(Self(
             input.0.to_owned(),
-            input
-                .1
-                .iter()
-                .map(|baprval| baprval.get_batype().unwrap())
-                .collect_vec(),
-        )
+            args
+        ))
     }
 }
 

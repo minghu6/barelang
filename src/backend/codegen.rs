@@ -544,6 +544,10 @@ impl<'ctx> CodeGen<'ctx> {
         let cgarr: CGArr = outter_val.try_into()?;  // as array
 
 
+        if cgarr.len == 0 {
+            return Ok(CGValue::Pure(CGPureValue::VoidUnit))
+        }
+
         /* Enter Name Scope */
         self.push_scope();
 
@@ -564,18 +568,9 @@ impl<'ctx> CodeGen<'ctx> {
         let step_val = i64_t.const_int(1 as u64, false);
 
 
-        /* Build Entry Loop Block Test */
-        let start_cond = self.builder.build_int_compare(
-            IntPredicate::ULT,
-            idx_init_val,
-            total_elems,
-            "",
-        );
-        let blk_loop = self.context.append_basic_block(fnval, "loop");
-        let blk_after = self.context.append_basic_block(fnval, "");
-        self.builder
-            .build_conditional_branch(start_cond, blk_loop, blk_after);
-
+        /* Build Loop Block */
+        let blk_loop = self.context.append_basic_block(fnval, "loop:body");
+        self.builder.build_unconditional_branch(blk_loop);
 
         /* Update Index */
         self.builder.position_at_end(blk_loop);
@@ -610,11 +605,10 @@ impl<'ctx> CodeGen<'ctx> {
             total_elems,
             "",
         );
+        let blk_after = self.context.append_basic_block(fnval, "loop:end");
         self.builder
             .build_conditional_branch(end_cond, blk_loop, blk_after);
         self.builder.position_at_end(blk_after);
-        self.builder
-            .position_at_end(fnval.get_last_basic_block().unwrap());
 
 
         /* Exit Name Scope */
