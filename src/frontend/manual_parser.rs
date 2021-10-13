@@ -1173,10 +1173,18 @@ impl Parser {
         .trim_end_matches("\"")
         .to_owned();
 
-        Ok(BaLit::Str(BaStr {
-            val: strv,
-            loc: tok.loc(),
-        }))
+        match unescape_str(&strv) {
+            Ok(val) => {
+                Ok(BaLit::Str(BaStr {
+                    val,
+                    loc: tok.loc(),
+                }))
+            },
+            Err(c) => {
+                Err(TrapCode::UnsupportedCharEscape(c).emit_box_err())
+            }
+
+        }
     }
 }
 

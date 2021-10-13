@@ -1,4 +1,4 @@
-//! Test Array, Iter
+//! Test Array, Iter, RawStr
 
 a0 = arr#[1, 2, 3];
 
@@ -13,12 +13,12 @@ iter (x:a0) {
     iter (y:a0) {
         iter (z:a0) {
             rs#printi(x*y*z);
-            rs#prints(" ")
+            rs#prints("\n")
         }
     };
 };
 
-rs#prints(rs#prints("\t你好"));
+rs#prints(rs#prints("\thi\n"));
 
-rs#prints("
-")
+// rs#prints("
+// ")

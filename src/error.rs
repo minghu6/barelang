@@ -26,6 +26,9 @@ pub enum TrapCode<'a> {
     UnsupportedDecValToPri(&'a BaDecVal),
     UnableToInferParamType(&'a BaPriVal),
 
+    /* BaCErr Lex */
+    UnsupportedCharEscape(char),
+
     /* BaCErr Parse */
     UnfinishedDerivation,
     UnexpectedToken(&'a Token, &'a str),
@@ -99,6 +102,13 @@ impl<'a> TrapCode<'a> {
             Self::InvalidCLIArgument(msg) => {
                 CLIErr::new_box_err(msg)
             },
+            Self::UnsupportedCharEscape(c) => {
+                BaCErr::new_box_err(
+                    format!(
+                            r"Unsupported Escaped Char \{}", c
+                        ).as_str()
+                )
+            }
             _ => {
                 BaCErr::new_box_err(
                     format!(

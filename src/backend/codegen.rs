@@ -625,7 +625,7 @@ impl<'ctx> CodeGen<'ctx> {
         prival: &BaPriVal,
     ) -> Result<CGValue<'ctx>, Box<dyn Error>> {
         match prival {
-            BaPriVal::Lit(lit) => self.lit2value(lit),
+            BaPriVal::Lit(lit) => self.codegen_lit(lit),
             BaPriVal::Id(valid) => {
                 if let Some(cgval) = self.get_sym_item(&valid.name) {
                     Ok(cgval)
@@ -791,7 +791,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         for prival in prival_iter {
             match prival {
-                BaPriVal::Lit(lit) => res.push(self.lit2value(lit)?),
+                BaPriVal::Lit(lit) => res.push(self.codegen_lit(lit)?),
                 BaPriVal::Id(id) => {
                     if let Some(ptrval) = self.get_sym_item(&id.name) {
                         res.push(ptrval.clone());
@@ -970,7 +970,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    fn lit2value(&self, lit: &BaLit) -> Result<CGValue<'ctx>, Box<dyn Error>> {
+    fn codegen_lit(&self, lit: &BaLit) -> Result<CGValue<'ctx>, Box<dyn Error>> {
         match lit {
             BaLit::I32(i32val) => {
                 let i32_t = self.context.i32_type();
@@ -1026,7 +1026,7 @@ impl<'ctx> CodeGen<'ctx> {
         prival: &BaPriVal,
     ) -> Result<CGValue<'ctx>, Box<dyn Error>> {
         match &prival {
-            BaPriVal::Lit(lit) => self.lit2value(&lit),
+            BaPriVal::Lit(lit) => self.codegen_lit(&lit),
             BaPriVal::Id(id) => Ok(self.get_sym_item(&id.name).unwrap()),
             BaPriVal::Vector(vec) => self.codegen_vector(vec),
         }

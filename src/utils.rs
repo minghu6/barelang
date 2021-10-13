@@ -44,6 +44,75 @@ pub fn usize_len() -> usize {
 }
 
 
+/// ```none
+/// string unescape:
+///   | \n -> 10
+///   | \r -> 13
+///   | \t -> 9
+/// ```
+pub fn unescape_str(escaped_str: &str) -> Result<String, char> {
+    enum State {
+        Normal,
+        EscapeReady,
+    }
+
+    enum Strategy {
+        PushPop,
+        JustPush,
+        JustDoublePop,
+        UnEscape
+    }
+
+    let mut st = State::Normal;
+    let mut output  = String::new();
+    let mut strategy;
+    // phantom cache
+
+    for u in escaped_str.chars() {
+        (st, strategy) = match (st, u) {
+            (State::Normal, '\\') => {
+                (State::EscapeReady, Strategy::JustPush)
+            },
+            (State::Normal, _) => {
+                (State::Normal, Strategy::PushPop)
+            },
+            (State::EscapeReady, '\\') => {
+                (State::Normal, Strategy::JustDoublePop)
+            },
+            (State::EscapeReady, 'n' | 'r' | 't') => {
+                (State::Normal, Strategy::UnEscape)
+            },
+            (State::EscapeReady, _) => {
+                return Err(u)
+            },
+        };
+
+        match strategy {
+            Strategy::PushPop => {
+                output.push(u);
+            },
+            Strategy::JustPush => {
+            },
+            Strategy::JustDoublePop => {
+                output.push('\\');
+            },
+            Strategy::UnEscape => {
+                output.push(
+                    match u {
+                        'n' => '\u{000a}',
+                        'r' => '\u{000d}',
+                        't' => '\u{0009}',
+                        _ => unreachable!()
+                    }
+                );
+            }
+        };
+    }
+
+    Ok(output)
+}
+
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Running Error
 
@@ -136,10 +205,20 @@ macro_rules! ht {
 mod test {
     use crate::*;
 
+    use super::unescape_str;
+
     #[test]
     fn test_vec_like_macro_rules() {
         let queue = vecdeq![1, 2];
 
         println!("{:?}", queue);
+    }
+
+    #[test]
+    fn test_unescape_str() {
+        let s0 = r"abc\ndef";
+
+        assert_eq!(s0, "abc\\ndef");
+        assert_eq!(unescape_str(&s0).unwrap(), "abc\ndef");
     }
 }
