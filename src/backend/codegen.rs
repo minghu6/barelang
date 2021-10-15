@@ -1113,6 +1113,16 @@ pub fn array_assign<'ctx>(
     }
 }
 
+/// == usize_type
+pub fn isize_type<'ctx>(context: &'ctx Context) -> IntType<'ctx> {
+    match usize_len() {
+        8 => context.i64_type(),
+        4 => context.i32_type(),
+        _ => unimplemented!()
+    }
+}
+
+
 ///
 impl Into<OptimizationLevel> for OptLv {
     fn into(self) -> OptimizationLevel {

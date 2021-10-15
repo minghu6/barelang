@@ -1,6 +1,7 @@
 #![allow(unused_imports)]
 #![feature(path_file_prefix)]
 
+use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::{Linkage, Module};
@@ -8,7 +9,10 @@ use inkwell::targets::{
     CodeModel, InitializationConfig, RelocMode, Target, TargetMachine,
 };
 use inkwell::types::{AnyTypeEnum, BasicTypeEnum};
-use inkwell::values::{AnyValue, BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue};
+use inkwell::values::{
+    AnyValue, BasicValue, BasicValueEnum, FunctionValue, IntValue,
+    PointerValue,
+};
 use inkwell::AddressSpace;
 use inkwell::IntPredicate;
 use inkwell::OptimizationLevel;
@@ -24,19 +28,17 @@ use std::path::Path;
 mod common;
 
 use crate::common::print_obj;
-use bac::backend::codegen::create_entry_block_alloca;
+use bac::backend::codegen::{create_entry_block_alloca, isize_type};
 use bac::{link_default, run_bin};
 
-
-fn inner_iter_loop<'ctx>(
+fn codegen_inner_iter_loop<'ctx>(
     builder: &Builder<'ctx>,
     context: &'ctx Context,
     fnval: FunctionValue<'ctx>,
     elem_len: IntValue<'ctx>,
     elems_ptr: PointerValue<'ctx>,
-    do_print_val: FunctionValue<'ctx>
-) -> Result<(), Box<dyn Error>>
-{
+    do_print_val: FunctionValue<'ctx>,
+) -> Result<(), Box<dyn Error>> {
     /* build for */
     let int_arr_idx_alloca = create_entry_block_alloca(
         &context,
@@ -59,7 +61,7 @@ fn inner_iter_loop<'ctx>(
     );
 
     let blk_loop = context.append_basic_block(fnval, "loop");
-    let blk_after = context.append_basic_block(fnval, "");
+    let blk_after = context.append_basic_block(fnval, "loop:end");
     builder.build_conditional_branch(start_cond, blk_loop, blk_after);
 
     // for loop
@@ -89,12 +91,13 @@ fn inner_iter_loop<'ctx>(
 }
 
 
+
 /// Test for/array/structure
 #[allow(unused)]
 fn llvm_codegen() -> Result<(), Box<dyn Error>> {
     let context = Context::create();
-    let module = context.create_module(&module_name!());
     let builder = context.create_builder();
+    let module = context.create_module(&module_name!());
 
     ///////////////////////////////////////////////////////////////////////////
     //// Code Generation
@@ -163,8 +166,7 @@ fn llvm_codegen() -> Result<(), Box<dyn Error>> {
     // builder.build_store(int_arr_ptr, int_arr_val);
     for (i, int) in int_arr.into_iter().enumerate() {
         let idx = i64_t.const_int(i as u64, false);
-        let ptr
-        = unsafe { builder.build_gep(int_arr_ptr, &[idx.into()], "") };
+        let ptr = unsafe { builder.build_gep(int_arr_ptr, &[idx.into()], "") };
         builder.build_store(ptr, int);
     }
 
@@ -175,36 +177,46 @@ fn llvm_codegen() -> Result<(), Box<dyn Error>> {
     builder.build_store(raw_arr_ptr, raw_arr_val);
 
     /* build arr */
-    let arr_val = arr_t
-        .const_named_struct(&[int_arr_len.into(), raw_arr_ptr.into()]);
+    let arr_val =
+        arr_t.const_named_struct(&[int_arr_len.into(), raw_arr_ptr.into()]);
     let arr_ptr = builder.build_malloc(arr_t, "malloc Arr")?;
     builder.build_store(arr_ptr, arr_val);
 
     /* build load arr */
-    let arr_len_ptr = builder.build_struct_gep(arr_ptr, 0, "get *(vec.len)").unwrap();
+    let arr_len_ptr = builder
+        .build_struct_gep(arr_ptr, 0, "get *(vec.len)")
+        .unwrap();
     let arr_len = builder.build_load(arr_len_ptr, "");
 
-    let arr_buf_ptr = builder.build_struct_gep(arr_ptr, 1, "get *(vec.buf)").unwrap();
+    let arr_buf_ptr = builder
+        .build_struct_gep(arr_ptr, 1, "get *(vec.buf)")
+        .unwrap();
     let arr_buf = builder.build_load(arr_buf_ptr, "");
 
     /* build load raw_arr */
     let raw_arr_ptr_ptr = builder
-        .build_struct_gep(arr_buf.into_pointer_value(), 1, "get *(raw_vec.ptr)").unwrap();
+        .build_struct_gep(
+            arr_buf.into_pointer_value(),
+            1,
+            "get *(raw_vec.ptr)",
+        )
+        .unwrap();
     let raw_arr_ptr = builder.build_load(raw_arr_ptr_ptr, "");
 
-    inner_iter_loop(
+    codegen_inner_iter_loop(
         &builder,
         &context,
         fn_main,
         arr_len.into_int_value(),
         raw_arr_ptr.into_pointer_value(),
-        fn_printi32_val
+        fn_printi32_val,
     )?;
+
 
     /* main return 0 */
     builder.build_return(Some(&i64_t.const_zero()));
 
-    // fn_main.verify(true);
+    fn_main.verify(true);
 
     ///////////////////////////////////////////////////////////////////////////
     //// Target Generation
@@ -212,9 +224,8 @@ fn llvm_codegen() -> Result<(), Box<dyn Error>> {
     print_obj(&module, OptimizationLevel::None)
 }
 
-
 #[test]
-fn test_llvm_codegen() -> Result<(), Box<dyn Error>> {
+fn test_llvm_iterarray() -> Result<(), Box<dyn Error>> {
     llvm_codegen()?;
 
     println!("->: {}", module_name!());
