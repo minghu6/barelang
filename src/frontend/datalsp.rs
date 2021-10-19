@@ -144,7 +144,8 @@ pub enum LspExpr {
     Pri(LspPri),
     FunCall(LspFunCall),
     IterBlock(LspIterBlock),
-    TwoPri(LspBOp, Rc<LspExpr>, Rc<LspExpr>)
+    TwoPri(LspBOp, Rc<LspExpr>, Rc<LspExpr>),
+    Range(LspRange)
 }
 
 impl GetLoc for LspExpr  {
@@ -159,9 +160,23 @@ impl GetLoc for LspExpr  {
             Self::TwoPri(_bop, fstpri, _sndpri) => {
                 fstpri.get_loc()
             },
-            Self::IterBlock(iterblock) => iterblock.srcloc.clone()
+            Self::IterBlock(iterblock) => iterblock.srcloc.clone(),
+            Self::Range(range) => {
+                range.srcloc.clone()
+            }
         }
     }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//// LspRange
+
+#[derive(Debug, Clone)]
+pub struct LspRange {
+    pub start: Option<LspPri>,
+    pub end: Option<LspPri>,
+    pub srcloc: SrcLoc
 }
 
 

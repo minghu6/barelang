@@ -127,14 +127,13 @@ impl MLSimplifier {
                 self.push_scope();
 
                 for blkstmtsref in block_stmts.block_stmts.iter() {
-                    let newstmt = self.simplify_blkstmt(&blkstmtsref.block_stmt_ref())?;
-                    stmts.extend(
-                        newstmt,
-                    );
+                    let newstmt =
+                        self.simplify_blkstmt(&blkstmtsref.block_stmt_ref())?;
+                    stmts.extend(newstmt);
                 }
 
-                let tailval
-                    = if let Some(ref lsptailexpr) = block_stmts.tail_expr
+                let tailval = if let Some(ref lsptailexpr) =
+                    block_stmts.tail_expr
                 {
                     let (decval, mut new_decs) =
                         self.simplify_expr(lsptailexpr)?;
@@ -368,9 +367,55 @@ impl MLSimplifier {
 
                 (BaDecVal::PriVal(BaPriVal::Id(decid)), combined_decs)
             }
-            LspExpr::FunCall(lspfuncall) => self.simplify_funcall(lspfuncall)?,
+            LspExpr::FunCall(lspfuncall) => {
+                self.simplify_funcall(lspfuncall)?
+            }
             LspExpr::IterBlock(lspiter) => self.simplify_iterblock(lspiter)?,
+            LspExpr::Range(lsprange) => self.simplify_range(lsprange)?,
         })
+    }
+
+    fn simplify_range(
+        &mut self,
+        lsprange: &LspRange,
+    ) -> Result<(BaDecVal, Vec<BaDeclare>), Box<dyn Error>> {
+        let mut newdecs = vec![];
+
+
+        let (start_pri_opt, start_newdecs) =
+            if let Some(ref start) = lsprange.start {
+                let (start_decval, mut start_newdecs) =
+                    self.simplify_pri(start)?;
+                let start_pri =
+                    self.decval2prival(start_decval, &mut start_newdecs);
+
+                (Some(start_pri), start_newdecs)
+            } else {
+                (None, vec![])
+            };
+
+        let (end_pri_opt, end_newdecs) = if let Some(ref end) = lsprange.end {
+            let (end_decval, mut end_newdecs) = self.simplify_pri(end)?;
+            let end_pri = self.decval2prival(end_decval, &mut end_newdecs);
+
+            (Some(end_pri), end_newdecs)
+        } else {
+            (None, vec![])
+        };
+
+        newdecs.extend(start_newdecs.into_iter());
+        newdecs.extend(end_newdecs.into_iter());
+
+        let barange = BaRange {
+            start: start_pri_opt,
+            end: end_pri_opt,
+            srcloc: lsprange.srcloc.clone(),
+        };
+
+        Ok((
+            BaDecVal::PriVal(BaPriVal::Range(Box::new(barange))),
+            newdecs,
+        ))
     }
 
     fn simplify_iterblock(
@@ -606,7 +651,6 @@ impl MLSimplifier {
             }
         }
     }
-
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -615,22 +659,22 @@ impl MLSimplifier {
 impl TryFrom<(&String, &Vec<BaPriVal>)> for BaFunKey {
     type Error = Box<dyn Error>;
 
-    fn try_from(input: (&String, &Vec<BaPriVal>)) -> Result<Self, Self::Error> {
+    fn try_from(
+        input: (&String, &Vec<BaPriVal>),
+    ) -> Result<Self, Self::Error> {
         let mut args = vec![];
 
         for prival in input.1.iter() {
             if let Some(batty) = prival.get_batype() {
                 args.push(batty)
-            }
-            else {
-                return Err(TrapCode::UnableToInferParamType(prival).emit_box_err())
+            } else {
+                return Err(
+                    TrapCode::UnableToInferParamType(prival).emit_box_err()
+                );
             }
         }
 
-        Ok(Self(
-            input.0.to_owned(),
-            args
-        ))
+        Ok(Self(input.0.to_owned(), args))
     }
 }
 

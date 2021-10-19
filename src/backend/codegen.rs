@@ -494,6 +494,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             BaType::Arr(_) => unimplemented!(),
             BaType::VoidUnit => unreachable!(),
+            _ => unreachable!()
         })
     }
 
@@ -634,6 +635,7 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
             BaPriVal::Vector(vec) => self.codegen_vector(vec),
+            BaPriVal::Range(_range) => todo!()
         }
     }
 
@@ -803,7 +805,8 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 BaPriVal::Vector(_vec) => {
                     todo!()
-                }
+                },
+                BaPriVal::Range(range) => todo!()
             }
         }
 
@@ -1029,13 +1032,14 @@ impl<'ctx> CodeGen<'ctx> {
             BaPriVal::Lit(lit) => self.codegen_lit(&lit),
             BaPriVal::Id(id) => Ok(self.get_sym_item(&id.name).unwrap()),
             BaPriVal::Vector(vec) => self.codegen_vector(vec),
+            BaPriVal::Range(range) => todo!()
         }
     }
 
     ///////////////////////////////////////////////////////////////////////////
     //// Foreign Type Cast
 
-    fn exproto_to_funtype(&self, proto: &ExRefFunProto) -> FunctionType<'ctx> {
+    fn exproto_to_funtype(&self, proto: &CFun) -> FunctionType<'ctx> {
         let params = proto
             .params
             .iter()

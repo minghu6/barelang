@@ -1,24 +1,22 @@
-//! Test Array, Iter, RawStr
+//! Test Array, Iter, RawStrEscape, Seq Syntax
 
 a0 = arr#[1, 2, 3];
 
-// iter (x:a0) {
-//     rs#prints("abc");
-//     rs#prints("def
-//     ");
-
-// };
 
 iter (x:a0) {
     iter (y:a0) {
         iter (z:a0) {
             rs#printi(x*y*z);
-            rs#prints("\n")
+            // rs#prints("\n")
         }
-    };
+    }
 };
 
-rs#prints(rs#prints("\thi\n"));
+// rs#prints(rs#prints("\thi\n"));
 
 // rs#prints("
 // ")
+
+seq0 = 0..;
+
+seq1 = -2..;

@@ -44,6 +44,7 @@ pub enum TrapCode<'a> {
 
     /* BaCErr Code Generation */
     RefTypeTryIntoPureValue,
+
     AssignVoid,
 
     /* RuleErr */

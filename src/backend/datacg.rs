@@ -95,11 +95,15 @@ impl<'ctx> TryGetBasicValue<'ctx> for CGValue<'ctx> {
                 CGPureValue::RawStr(cgstr) => cgstr.val.into(),
                 CGPureValue::VoidUnit => {
                     return Err(TrapCode::ToCGValOnVoid.emit_box_err())
+                },
+                _ => {
+                    unreachable!()
                 }
             },
             CGValue::Ref(cgref) => match cgref {
                 CGRef::Arr(arr_rc) => arr_rc.as_ref().borrow().start.into(),
             },
+
         })
     }
 }
@@ -116,7 +120,7 @@ impl<'ctx> TryFrom<(BaType, BasicValueEnum<'ctx>)> for CGValue<'ctx> {
         let cgval = match &ty {
             BaType::VoidUnit => {
                 return Err(TrapCode::ToCGValOnVoid.emit_box_err())
-            }
+            },
             BaType::Int => CGValue::Pure(CGPureValue::Int(CGInt {
                 length: 4,
                 signed: true,
@@ -150,7 +154,14 @@ impl<'ctx> TryFrom<(BaType, BasicValueEnum<'ctx>)> for CGValue<'ctx> {
             BaType::Customized(_id_rc) => todo!(),
             BaType::ExRefFunProto(ref _exref_funproto) => {
                 todo!()
+            },
+            _ => {
+                unreachable!()
             }
+            // BaType::Range(ty) => return Err(TrapCode::),
+            // BaType::RangeFrom(),
+            // BaType::RangeTo(),
+            // BaType::RangeFull => CGValue::Pure(CGPureValue::RangeFull)
         };
 
         Ok(cgval)
@@ -198,6 +209,10 @@ pub enum CGPureValue<'ctx> {
     Float(CGFloat<'ctx>),
     RawStr(CGRawStr<'ctx>),
     VoidUnit,
+    RangeFull,
+    RangeFrom(Box<CGPureValue<'ctx>>),
+    RangeTo(Box<CGPureValue<'ctx>>),
+    Range(Box<CGPureValue<'ctx>>, Box<CGPureValue<'ctx>>)
 }
 
 impl<'ctx> CGPureValue<'ctx> {

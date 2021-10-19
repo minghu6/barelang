@@ -257,6 +257,7 @@ pub fn barelang_token_matcher_vec() -> TokenMatcherVec {
         f      => "^f$",
         iter   => "^iter$",
         colon  => "^:$",
+        ellipsis2 => "^\\.\\.$",
 
         int    => "^int$",
         float  => "^float$",
@@ -322,6 +323,7 @@ pub fn barelang_gram() -> Gram {
         ExprListRem,
         IterCtrlScope,
         Vector,
+        Range,
 
         BOp,
         Lit,
@@ -334,6 +336,9 @@ pub fn barelang_gram() -> Gram {
         /* control key */
         f,
         iter,
+
+        /* etc sign */
+        ellipsis2,
 
         /* primitive type key */
         int,
@@ -414,6 +419,13 @@ pub fn barelang_gram() -> Gram {
           0 -> Pri ExprRem;
           1 -> FunCall;
           2 -> iter IterCtrlScope Block;
+          3 -> Range;
+
+        Range:
+          0 -> Pri ellipsis2 Pri;
+          1 -> Pri ellipsis2;
+          2 -> ellipsis2 Pri;
+          3 -> ellipsis2;
 
         IterCtrlScope:
           0 -> lparen id colon Pri rparen;

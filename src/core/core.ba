@@ -1,0 +1,6 @@
+
+
+struct MemBuf {
+    cap: usize,
+    ptr: any*
+}

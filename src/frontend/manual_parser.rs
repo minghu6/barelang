@@ -96,6 +96,10 @@ impl Parser {
         self.history_record.push(self.cursor);
     }
 
+    fn commit(&mut self) {
+        self.history_record.pop();
+    }
+
     fn restore(&mut self) {
         self.cursor = self.history_record.pop().unwrap();
     }
@@ -108,14 +112,14 @@ impl Parser {
         self.history_record.len() > 0
     }
 
-    // #[inline]
-    // fn verbose_enable(&self) -> bool {
-    //     verbose_enable_v2() && !self.is_try_mode()
-    // }
+    #[inline]
+    fn verbose_enable(&self) -> bool {
+        verbose_enable_v2() && !self.is_try_mode()
+    }
 
     #[inline]
     fn debug_running(&mut self, prod_name: &str, prod_idx: usize, step: usize) {
-        if verbose_enable_v2() {
+        if self.verbose_enable() {
             let prod_vec = self.gram.idx(prod_name);
             if prod_idx >= prod_vec.len() {
                 panic!("{}[{}] index out of bounds", prod_name, prod_idx)
@@ -134,24 +138,25 @@ impl Parser {
                 Err(_) => "<$>".to_owned()
             };
 
-            if self.is_try_mode() {
-                println!(
-                    "{}({}){} | {}",
-                    indent,
-                    "?",
-                    running,
-                    cur_tok_str
-                );
-            }
-            else {
-                println!(
-                    "{}({}){} | {}",
-                    indent,
-                    self.scope_level - 1,
-                    running,
-                    cur_tok_str
-                );
-            }
+            println!(
+                "{}({}){} | {}",
+                indent,
+                self.scope_level - 1,
+                running,
+                cur_tok_str
+            );
+            // if self.is_try_mode() {
+            //     println!(
+            //         "{}({}){} | {}",
+            //         indent,
+            //         "?",
+            //         running,
+            //         cur_tok_str
+            //     );
+            // }
+            // else {
+
+            // }
 
             if running.is_end() {
                 self.debug_pop();
@@ -230,25 +235,41 @@ impl Parser {
         })
     }
 
+    fn inspect_epsilon_block_stmts_span(&mut self) -> bool {
+        self.record();
+
+        if let Ok(_) = self.parse_expr() {
+            if self.reach_brace_end() {
+                self.restore();
+
+                return true;
+            }
+        }
+
+        self.restore();
+
+        if self.reach_brace_end() {
+            return true;
+        }
+
+        if self.is_end() {
+            return true;
+        }
+
+        false
+    }
+
     /// ```none
     /// BlockStmtsSpan:
     ///   0 -> BlockStmt BlockStmtsSpan;
     ///   1 -> ε;
     /// ```
     fn parse_block_stmts_span(&mut self) -> Result<Vec<LspBlockStmtRef>, Box<dyn Error>> {
-        self.record();
-
-        if (self.parse_expr().is_ok() && self.reach_brace_end())
-        || self.reach_brace_end()  // Follow (Block)
-        || self.is_end()          // Follow (Prog -> BlockStmts)
-        {
-            self.restore();
+        if self.inspect_epsilon_block_stmts_span() {
             self.debug_running("[BlockStmtsSpan]", 1, 0);
 
             return Ok(vec![])
         }
-
-        self.restore();
 
         self.debug_running("[BlockStmtsSpan]", 0, 0);
 
@@ -433,28 +454,59 @@ impl Parser {
         })
     }
 
+    fn inspect_range(&mut self) -> bool {
+        if self.peek1_t("<ellipsis2>") {
+            return true;
+        }
+
+        self.record();
+        if let Ok(_) = self.parse_pri() {
+            if self.peek1_t("<ellipsis2>") {
+                self.restore();
+                return true;
+            }
+        }
+        self.restore();
+
+        false
+    }
+
+    fn inspect_funcall(&mut self) -> bool {
+        self.record();
+        if let Ok(_) = self.parse_id() {
+            if self.reach_paren_start() {
+                self.restore();
+                return true;
+            }
+        }
+        self.restore();
+
+        false
+    }
+
     /// ```none
     /// Expr:
     ///   0 -> Pri ExprRem;
     ///   1 -> FunCall;
     ///   2 -> iter IterCtrlScope Block;
+    ///   3 -> Range;
     /// ```
     fn parse_expr(&mut self) -> Result<LspExpr, Box<dyn Error>> {
-        self.record();
+        let mut auto = gen_counter();
 
-        if let Ok(_) = self.parse_t("<iter>") {
-            self.restore();
-            self.debug_running("[Expr]", 2, 0);
+        /* parse iter expr -- 2 */
+        if self.peek1_t("<iter>") {
+            self.debug_running("[Expr]", 2, auto());
 
             let iter = self.parse_t("<iter>")?;
             let srcloc = iter.loc();
-            self.debug_running("[Expr]", 2, 1);
+            self.debug_running("[Expr]", 2, auto());
 
             let (var_formal, var_outter) = self.parse_iter_ctrl_scope()?;
-            self.debug_running("[Expr]", 2, 2);
+            self.debug_running("[Expr]", 2, auto());
 
             let ctrl_body = Rc::new(self.parse_block()?);
-            self.debug_running("[Expr]", 2, 3);
+            self.debug_running("[Expr]", 2, auto());
 
             return Ok(
                 LspExpr::IterBlock(LspIterBlock {
@@ -465,27 +517,36 @@ impl Parser {
                 })
             )
         }
-        else if let Ok(_) = self.parse_id() {  // check if it's a funcall;
-            if self.reach_paren_start() {
-                self.restore();
-                self.debug_running("[Expr]", 1, 0);
 
-                let funcall = self.parse_fun_call()?;
-                self.debug_running("[Expr]", 1, 1);
+        /* parse funcall expr -- 1 */
+        if self.inspect_funcall() {
+            self.debug_running("[Expr]", 1, auto());
 
-                return Ok(LspExpr::FunCall(funcall));
-            }
+            let funcall = self.parse_fun_call()?;
+            self.debug_running("[Expr]", 1, auto());
+
+            return Ok(LspExpr::FunCall(funcall));
         }
 
-        self.restore();
+        /* parse range expr -- 3 */
+        if self.inspect_range() {
+            self.debug_running("[Expr]", 3, auto());
 
-        self.debug_running("[Expr]", 0, 0);
+            let range = self.parse_range()?;
+            self.debug_running("[Expr]", 3, auto());
+
+            return Ok(LspExpr::Range(range))
+        }
+
+
+        /* parse infix expr -- 0 */
+        self.debug_running("[Expr]", 0, auto());
 
         let pri = self.parse_pri()?;
-        self.debug_running("[Expr]", 0, 1);
+        self.debug_running("[Expr]", 0, auto());
 
         let (rem_pris, rem_bops) = self.parse_expr_rem()?;
-        self.debug_running("[Expr]", 0, 2);
+        self.debug_running("[Expr]", 0, auto());
 
         // Combine the LspExpr
         // Resort the Infix expression by precedence (they don't change left most expr srcloc)
@@ -519,6 +580,91 @@ impl Parser {
 
         Ok(expr_stack.pop().unwrap())
     }
+
+
+    /// ```none
+    /// Range:
+    /// 0 -> Pri ellipsis2 Pri;
+    /// 1 -> Pri ellipsis2;
+    /// 2 -> ellipsis2 Pri;
+    /// 3 -> ellipsis2;
+    /// ```
+    fn parse_range(&mut self) -> Result<LspRange, Box<dyn Error>> {
+        let mut auto = gen_counter();
+
+
+        // pred production 2 or 3
+        Ok(if self.peek1_t("<ellipsis2>") {
+            let ellipsis2 = self.parse_t("<ellipsis2>")?;
+            let srcloc = ellipsis2.loc();
+
+            self.record();
+
+            if let Ok(pri) = self.parse_pri() {
+                self.commit();
+
+                self.debug_running("[Range]", 2, auto());
+                self.debug_running("[Range]", 2, auto());
+                self.debug_running("[Range]", 2, auto());
+
+                LspRange {
+                    start: None,
+                    end: Some(pri),
+                    srcloc
+                }
+            }
+            else {
+                self.restore();
+
+                self.debug_running("[Range]", 3, auto());
+                self.debug_running("[Range]", 3, auto());
+
+                LspRange {
+                    start: None,
+                    end: None,
+                    srcloc
+                }
+            }
+        }
+        // pred production 0 or 1
+        else {
+            let pri_start = self.parse_pri()?;
+            let srcloc = pri_start.get_loc();
+            self.parse_t("<ellipsis2>")?;
+
+            self.record();
+
+            if let Ok(pri_end) = self.parse_pri() {
+                self.commit();
+
+                self.debug_running("[Range]", 0, auto());
+                self.debug_running("[Range]", 0, auto());
+                self.debug_running("[Range]", 0, auto());
+                self.debug_running("[Range]", 0, auto());
+
+                LspRange {
+                    start: Some(pri_start),
+                    end: Some(pri_end),
+                    srcloc
+                }
+            }
+            else {
+                self.restore();
+
+                self.debug_running("[Range]", 1, auto());
+                self.debug_running("[Range]", 1, auto());
+                self.debug_running("[Range]", 1, auto());
+
+                LspRange {
+                    start: Some(pri_start),
+                    end: None,
+                    srcloc
+                }
+            }
+        })
+
+    }
+
 
 
     /// ```none
