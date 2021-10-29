@@ -1,2 +1,19 @@
-//!
+//! Struct, Match
 
+// toolkit
+
+f: display(n: u32): String {
+    s = new<String>();
+
+    label: ()
+
+    loop (dividend_n = n) {
+        nxt_dividend_n, rem = divmod(dividend_n, 10);
+
+        rem + '0' as int
+
+        recur (dividend_n = nxt_dividend_n)  // or just `recur (rem_n)`
+    }
+
+    rs#prints("\n");
+}

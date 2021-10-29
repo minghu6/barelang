@@ -249,7 +249,7 @@ pub fn make_simple_error_rules(input: TokenStream) -> TokenStream {
         impl std::error::Error for #name {}
 
         impl #name {
-            pub fn new_box_err(msg: &str) -> Box<dyn Error> {
+            pub fn new_box_err(msg: &str) -> Box<dyn std::error::Error> {
                 Box::new(Self::new(msg))
             }
 

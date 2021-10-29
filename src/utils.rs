@@ -46,9 +46,12 @@ pub fn usize_len() -> usize {
 
 /// ```none
 /// string unescape:
-///   | \n -> 10
-///   | \r -> 13
-///   | \t -> 9
+///   | \n -> 10  0x0a
+///   | \r -> 13  0x0d
+///   | \t -> 9   0x09
+///   | \" -> 34  0x22
+///   | \\ -> 92  0x5c
+///   | \' -> 39  0x27
 /// ```
 pub fn unescape_str(escaped_str: &str) -> Result<String, char> {
     enum State {
@@ -59,7 +62,6 @@ pub fn unescape_str(escaped_str: &str) -> Result<String, char> {
     enum Strategy {
         PushPop,
         JustPush,
-        JustDoublePop,
         UnEscape
     }
 
@@ -76,10 +78,7 @@ pub fn unescape_str(escaped_str: &str) -> Result<String, char> {
             (State::Normal, _) => {
                 (State::Normal, Strategy::PushPop)
             },
-            (State::EscapeReady, '\\') => {
-                (State::Normal, Strategy::JustDoublePop)
-            },
-            (State::EscapeReady, 'n' | 'r' | 't') => {
+            (State::EscapeReady, 'n' | 'r' | 't' | '"' | '\\' | '\'') => {
                 (State::Normal, Strategy::UnEscape)
             },
             (State::EscapeReady, _) => {
@@ -93,15 +92,15 @@ pub fn unescape_str(escaped_str: &str) -> Result<String, char> {
             },
             Strategy::JustPush => {
             },
-            Strategy::JustDoublePop => {
-                output.push('\\');
-            },
             Strategy::UnEscape => {
                 output.push(
                     match u {
-                        'n' => '\u{000a}',
-                        'r' => '\u{000d}',
-                        't' => '\u{0009}',
+                        'n'  => '\u{000a}',
+                        'r'  => '\u{000d}',
+                        't'  => '\u{0009}',
+                        '"'  => '\u{0022}',
+                        '\\' => '\u{005c}',
+                        '\'' => '\u{0027}',
                         _ => unreachable!()
                     }
                 );
