@@ -125,7 +125,7 @@ fn codegen_iter_seq<'ctx>(
 
     /* Print Yield Value */
     let printi32 = module.get_function("printi32").unwrap();
-    builder.build_call(printi32, &[res_val], "");
+    builder.build_call(printi32, &[res_val.into()], "");
 
     let sleep = module.get_function("sleep").unwrap();
     builder.build_call(sleep, &[isize_t.const_int(1, false).into()], "");

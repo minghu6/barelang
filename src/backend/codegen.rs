@@ -301,7 +301,7 @@ impl<'ctx> CodeGen<'ctx> {
             .hdr
             .params
             .iter()
-            .map(|param| self.baty_to_basicty(&param.ty).unwrap())
+            .map(|param| self.baty_to_basicty(&param.ty).unwrap().into())
             .collect_vec();
 
         let fn_xx_t = if let Either::Left(basic_ty) = ret_ty {
@@ -750,7 +750,7 @@ impl<'ctx> CodeGen<'ctx> {
         let args_vec = self.codegen_args(&funcall.args[..])?;
         let bv_vec = args_vec
             .into_iter()
-            .map(|cgval| cgval.try_get_basic_value().unwrap())
+            .map(|cgval| cgval.try_get_basic_value().unwrap().into())
             .collect_vec();
 
         let rtn_callsite = self.builder.build_call(
@@ -776,7 +776,7 @@ impl<'ctx> CodeGen<'ctx> {
         let params = funkey
             .1
             .iter()
-            .map(|baty| self.baty_to_basicty(baty).unwrap())
+            .map(|baty| self.baty_to_basicty(baty).unwrap().into())
             .collect_vec();
 
         match self.baty_to_retty(ret) {
@@ -1043,7 +1043,7 @@ impl<'ctx> CodeGen<'ctx> {
         let params = proto
             .params
             .iter()
-            .map(|param| self.exty_to_basicty(param).unwrap())
+            .map(|param| self.exty_to_basicty(param).unwrap().into())
             .collect_vec();
 
         match self.exty_to_retty(&proto.ret) {

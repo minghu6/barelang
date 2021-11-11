@@ -89,7 +89,7 @@ fn rsclib_codegen() -> Result<(), Box<dyn Error>> {
     builder.build_store(s0_ptr, s0_ptr_v);
 
     let ret_callsite =
-        builder.build_call(fn_prints, &[BasicValueEnum::PointerValue(s0_ptr)], "prints");
+        builder.build_call(fn_prints, &[BasicValueEnum::PointerValue(s0_ptr).into()], "prints");
 
     let ret_basic = ret_callsite.try_as_basic_value().left().unwrap();
     let ret_arr = ret_basic.into_pointer_value();
