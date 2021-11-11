@@ -11,5 +11,6 @@ inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", feat
 indexmap = "1.6.*"
 itertools = "0.10.*"
 convert_case = "0.4.*"
+m6stack = { git = "https://github.com/minghu6/rust-m6stack", branch = "master" }
 
 proc_macros = { package = "bare-proc-macros", path = "../proc_macros" }

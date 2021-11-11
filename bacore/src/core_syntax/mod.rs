@@ -1,20 +1,42 @@
+use std::collections::VecDeque;
+use std::error::Error;
+use std::ops::Index;
+
+use convert_case::{Case, Casing};
 use indexmap::IndexMap;
 use inkwell::{
     builder::Builder,
     context::Context,
-    module::Module,
-    types::{BasicTypeEnum, StructType},
+    module::{Linkage, Module},
+    types::{BasicTypeEnum, FloatType, FunctionType, StructType},
+    values::IntValue,
+    AddressSpace,
 };
-use itertools::Either;
+use itertools::{Either, Itertools};
 use lisparser::data::ListData;
-use std::error::Error;
 
-use std::{collections::VecDeque, ops::Index};
+use self::{
+    a_fn::AFn,
+    a_struct::AStruct,
+    template_fn::TemplateFn,
+    template_struct::TemplateStruct,
+    type_anno::{ConcreteTypeAnno, TypeAnno},
+};
+use crate::error::*;
+use crate::*;
 
-use self::{form_struct::AStruct, form_template_struct::TemplateStruct};
+pub(crate) mod a_fn;
+pub(crate) mod a_struct;
+pub(crate) mod a_value;
+pub(crate) mod template_fn;
+pub(crate) mod template_struct;
+pub(crate) mod a_ns;
+pub(crate) mod type_anno;
+pub(crate) mod name_mangling;
+pub(crate) mod hardcode_fns;
+pub(crate) mod form_handel;
+pub(crate) mod spec_etc;
 
-pub(crate) mod form_struct;
-pub(crate) mod form_template_struct;
 
 /// Or alias as `Special Form`
 pub(crate) enum CoreSyntax {
@@ -48,149 +70,45 @@ pub(crate) enum TopLevelSyntax {
 //// Context (core build as form of `context`)
 
 pub struct CompileContext<'ctx> {
-    template_struct_map: IndexMap<String, TemplateStruct>,
-    template_fn_map: IndexMap<TemplateFnKey, TemplateFn>,
+    pub(crate) template_struct_map: IndexMap<String, TemplateStruct>,
+    pub(crate) template_fn_map: IndexMap<String, TemplateFn>,
 
-    form_struct_map: IndexMap<String, AStruct>,
+    pub(crate) form_struct_map: IndexMap<String, AStruct>,
+    pub(crate) form_fn_map: IndexMap<String, AFn>,
 
-    struct_map: IndexMap<String, StructType<'ctx>>,
-    fn_map: IndexMap<FnKey, FnForm>,
+    pub(crate) struct_map: IndexMap<String, StructType<'ctx>>,
+    pub(crate) fn_map: IndexMap<String, FunctionType<'ctx>>,  // vmname
 
-    vmctx: &'ctx Context,
-    vmmod: Module<'ctx>,
-    vmbuilder: Builder<'ctx>,
+    pub(crate) vmctx: &'ctx Context,
+    pub(crate) vmmod: Module<'ctx>,
+    pub(crate) vmbuilder: Builder<'ctx>,  // Global builder
 }
 
-pub struct ThisModuleContext {}
 
-////////////////////////////////////////////////////////////////////////////////
-//// `TemplateFn` Form
+impl<'ctx> CompileContext<'ctx> {
+    pub(crate) fn new(name: &str, vmctx: &'ctx Context) -> Self {
+        let vmmod = vmctx.create_module(name);
+        let vmbuilder = vmctx.create_builder();
 
-pub struct TemplateFn;
+        Self {
+            vmctx,
+            vmmod,
+            vmbuilder,
 
-////////////////////////////////////////////////////////////////////////////////
-//// TemplateFnKey
+            template_struct_map: IndexMap::new(),
+            template_fn_map: IndexMap::new(),
 
-pub struct TemplateFnKey {
-    pub name: String,
-    pub params: Vec<TemplateTypeAnno>,
-}
+            form_struct_map: IndexMap::new(),
+            form_fn_map: IndexMap::new(),
 
-////////////////////////////////////////////////////////////////////////////////
-//// Template Type Annotation
+            struct_map: IndexMap::new(),
+            fn_map: IndexMap::new(),
 
-#[derive(Debug, Clone)]
-pub enum TemplateTypeAnno {
-    TemplateStruct(String, Vec<usize>),
-    Itself(usize),
-}
-
-////////////////////////////////////////////////////////////////////////////////
-//// FnKey
-
-pub struct FnKey {
-    pub name: String,
-    pub params: Vec<ConcreteTypeAnno>,
-}
-
-////////////////////////////////////////////////////////////////////////////////
-//// Type Annotation
-
-#[derive(Debug, Clone)]
-pub enum ConcreteTypeAnno {
-    Primitive(String),
-    Struct(String),
-}
-
-impl<'ctx> ConcreteTypeAnno {
-    pub(crate) fn compile(
-        &self,
-        ctx: &mut CompileContext<'ctx>,
-    ) -> Result<BasicTypeEnum<'ctx>, Box<dyn Error>> {
-        Ok(match &self {
-            Self::Primitive(ref name) => match name.as_str() {
-                "usize" | "i64" | "u64" => ctx.vmctx.i64_type(),
-                "i32" | "u32" => ctx.vmctx.i32_type(),
-                "i8" | "u8" => ctx.vmctx.i8_type(),
-                _ => unreachable!(),
-            }
-            .into(),
-            Self::Struct(name) => {
-                if let Some(bt) = ctx.struct_map.get(name) {
-                    bt.clone().into()
-                } else {
-                    // collect all form-struct before compile
-                    let form_struct =
-                        ctx.form_struct_map.get(name).unwrap().clone();
-
-                    // circular dependency check before that
-                    form_struct.compile(ctx)?
-                }
-            }
-        })
-    }
-}
-
-impl ToString for ConcreteTypeAnno {
-    fn to_string(&self) -> String {
-        match &self {
-            ConcreteTypeAnno::Primitive(name) => name.to_owned(),
-            ConcreteTypeAnno::Struct(name) => name.to_owned(),
         }
     }
+
+    pub(crate) fn mod_name(&self) -> String {
+        self.vmmod.get_name().to_str().unwrap().to_owned()
+    }
 }
 
-#[derive(Debug, Clone)]
-pub enum TypeAnno {
-    Template(TemplateTypeAnno),
-    Concrete(ConcreteTypeAnno),
-}
-
-////////////////////////////////////////////////////////////////////////////////
-//// Param
-
-#[derive(Debug, Clone)]
-pub struct Param {
-    pub formal: String,
-    pub type_anno: TypeAnno,
-}
-
-#[derive(Debug, Clone)]
-pub struct ConcreteParam {
-    pub formal: String,
-    pub type_anno: ConcreteTypeAnno,
-}
-
-////////////////////////////////////////////////////////////////////////////////
-//// Fn Form
-
-pub struct FnForm {
-    pub name: String,
-    pub generic: Vec<String>,
-    pub params: Vec<ConcreteParam>,
-    pub ret: Option<ConcreteTypeAnno>,
-    pub body: Vec<ListData>,
-}
-
-////////////////////////////////////////////////////////////////////////////////
-//// `NS` Form
-
-pub struct NS {
-    pub name: String,      // namespace name
-    pub mods: Vec<String>, // modules name belongs to the namespace
-}
-
-impl NS {
-    pub fn load_mods() {}
-}
-
-pub trait Compile<'ctx> {
-    fn compile(
-        &self,
-        ctx: &mut CompileContext<'ctx>,
-    ) -> Result<BasicTypeEnum<'ctx>, Box<dyn Error>>;
-}
-
-pub trait ConcreteTypeAnnoGetter {
-    fn get_concrete_type_anno(&self) -> ConcreteTypeAnno;
-}

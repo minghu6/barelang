@@ -3,27 +3,24 @@
 
 
 ; (template-struct [generic-type+] struct-name [params?])
-(template-struct [T] MemBuf
+(def-template-struct [T] MemBuf
     [
-        ^usize cap
-        ^{ :type T :addr 'ptr :generic T } ptr
+        { :type-primitive usize } cap  ; ^{ :type-primitive 'usize }
+        { :type-template T :addr ptr :generic [T] } ptr
     ]
 )
 
 
-;; ; (template-fn [generic-type+] struct-name [params?] ret [stmt*])
-;; (template-fn
-;;     :generic [T]
-;;     :name index-of
-;;     :params [
-;;         ^{ :type 'MemBuf :generic [T] } buf
-;;         ^usize idx
-;;     ]
-;;     :ret ^T
-;;     :body [
-;;         (deref (+ (attr buf ptr) idx))
-;;     ]
-;; )
+; (template-fn [generic-type+] struct-name [params?] ret [stmt*])
+(def-template-fn [T] index-of
+    [
+     { :type-struct MemBuf :generic [T] } buf
+     { :type-primitive usize } idx
+    ]
+    { :type-template T :generic [T] }
+
+    (deref (+ (attr buf ptr) idx))
+)
 
 ;; (template-struct [T] Array
 ;;     [
@@ -39,12 +36,12 @@
 ;;     ]
 ;;     :ret T
 ;;     :body [
-;;         (index-of (point-to arr buf) idx)
+;;         (index-of (deref-attr arr buf) idx)
 ;;     ]
 ;; )
 
 
-;; (template-fn [T] point-to
+;; (template-fn [T] deref-attr
 ;;     [
 ;;         (param S ())
 ;;     ]

@@ -1,15 +1,17 @@
 use std::{collections::HashSet, error::Error};
 
 use inkwell::types::BasicTypeEnum;
+use itertools::Itertools;
 
 use super::{
-    Compile, CompileContext, ConcreteParam, ConcreteTypeAnno,
-    ConcreteTypeAnnoGetter, TypeAnno,
+    a_fn::ConcreteParam,
+    type_anno::{AddrMode, ConcreteTypeAnnoGetter},
+    CompileContext, ConcreteTypeAnno,
 };
 use crate::error::*;
 
 ////////////////////////////////////////////////////////////////////////////////
-//// Struct Form
+//// Struct `Form`
 
 #[derive(Debug, Clone)]
 pub struct AStruct {
@@ -19,8 +21,8 @@ pub struct AStruct {
 
 pub type ConcreteField = ConcreteParam;
 
-impl<'ctx> Compile<'ctx> for AStruct {
-    fn compile(
+impl<'ctx> AStruct {
+    pub fn compile(
         &self,
         ctx: &mut CompileContext<'ctx>,
     ) -> Result<BasicTypeEnum<'ctx>, Box<dyn Error>> {
@@ -45,7 +47,7 @@ impl<'ctx> Compile<'ctx> for AStruct {
 
 impl ConcreteTypeAnnoGetter for AStruct {
     fn get_concrete_type_anno(&self) -> ConcreteTypeAnno {
-        ConcreteTypeAnno::Struct(self.name.to_owned())
+        ConcreteTypeAnno::Struct(self.name.to_owned(), AddrMode::Value)
     }
 }
 
@@ -59,8 +61,15 @@ impl AStruct {
 
         for field in self.fields.iter() {
             match &field.type_anno {
-                super::ConcreteTypeAnno::Primitive(_) => (),
-                super::ConcreteTypeAnno::Struct(struct_field_type_name) => {
+                super::ConcreteTypeAnno::Primitive(_, _) => (),
+                super::ConcreteTypeAnno::Struct(
+                    struct_field_type_name,
+                    addr_mode,
+                ) => {
+                    if let AddrMode::Ptr = addr_mode {
+                        continue;
+                    }
+
                     if queried_set.contains(struct_field_type_name) {
                         return Err(CircularDependencyError::new_box_err(
                             struct_field_type_name,
@@ -79,5 +88,17 @@ impl AStruct {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn index_of_field(&self, field_name: &str) -> Option<usize> {
+        if let Some((idx, _)) = self
+            .fields
+            .iter()
+            .find_position(|field| field.formal == field_name)
+        {
+            Some(idx)
+        } else {
+            None
+        }
     }
 }

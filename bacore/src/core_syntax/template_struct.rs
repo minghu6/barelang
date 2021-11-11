@@ -4,41 +4,45 @@ use convert_case::{Case, Casing};
 use inkwell::types::BasicTypeEnum;
 use itertools::Itertools;
 
-use crate::core_syntax::form_struct::ConcreteField;
+use crate::core_syntax::a_struct::ConcreteField;
 
 use super::{
-    form_struct::AStruct, CompileContext, ConcreteTypeAnno,
-    ConcreteTypeAnnoGetter, Param, TemplateTypeAnno, TypeAnno,
+    a_struct::AStruct,
+    name_mangling::{concat_overload_name, NameConcatStyle},
+    template_fn::Param,
+    type_anno::{
+        ConcreteTypeAnno, ConcreteTypeAnnoGetter, TemplateTypeAnno, TypeAnno,
+    },
+    CompileContext,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 //// `TemplateStruct` Form
 
 #[derive(Debug, Clone)]
-pub struct TemplateStruct {
-    pub name: String,
-    pub generic_placeholder_num: usize,
-    pub fields: Vec<Field>,
+pub(crate) struct TemplateStruct {
+    pub(crate) name: String,
+    pub(crate) generic_placeholder_num: usize,
+    pub(crate) fields: Vec<Field>,
 }
 
-pub type Field = Param;
+pub(crate) type Field = Param;
 
 impl<'ctx> TemplateStruct {
-    fn expand(
+    pub(crate) fn expand(
         &self,
         ctx: &mut CompileContext<'ctx>,
         concrete_types: Vec<ConcreteTypeAnno>,
     ) -> Result<AStruct, Box<dyn Error>> {
-        let postfix = concrete_types
-            .iter()
-            .map(|anno| anno.to_string().to_case(Case::Camel))
-            .join("");
-
-        let concrete_name = self.name.to_owned() + &postfix;
+        let concrete_name = concat_overload_name(
+            &self.name,
+            &concrete_types,
+            NameConcatStyle::Struct,
+        );
 
         // load from memory cache
-        if let Some(struct_t) = ctx.form_struct_map.get(&concrete_name) {
-            return Ok(struct_t.clone());
+        if let Some(astruct) = ctx.form_struct_map.get(&concrete_name) {
+            return Ok(astruct.clone());
         }
 
         // expand
@@ -46,7 +50,11 @@ impl<'ctx> TemplateStruct {
         for field in self.fields.iter() {
             let type_anno = match &field.type_anno {
                 TypeAnno::Template(anno) => match anno {
-                    TemplateTypeAnno::TemplateStruct(name, idxs) => {
+                    TemplateTypeAnno::TemplateStruct(
+                        name,
+                        idxs,
+                        addr_mode,
+                    ) => {
                         let field_construction =
                             ctx.template_struct_map.get(name).unwrap().clone();
 
@@ -59,11 +67,14 @@ impl<'ctx> TemplateStruct {
                         let field_expanded_struct = field_construction
                             .expand(ctx, field_construction_types)?;
 
-                        field_expanded_struct.get_concrete_type_anno()
+                        field_expanded_struct
+                            .get_concrete_type_anno()
+                            .replace_addr_mode(addr_mode.clone())
                     }
-                    TemplateTypeAnno::Itself(idx) => {
-                        concrete_types[idx.clone()].clone()
-                    }
+                    TemplateTypeAnno::Itself(idx, addr_mode) => concrete_types
+                        [idx.clone()]
+                    .clone()
+                    .replace_addr_mode(addr_mode.clone()),
                 },
                 TypeAnno::Concrete(concrete_type) => concrete_type.clone(),
             };

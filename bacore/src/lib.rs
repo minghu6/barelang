@@ -1,16 +1,26 @@
+#![feature(box_syntax)]
+#![feature(type_alias_impl_trait)]
+
 #[allow(unused_imports)]
 #[allow(unused_import_braces)]
 
 
 pub(crate) mod core_syntax;
+pub(crate) mod parse_phase_2;
 pub mod error;
 
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::error::Error;
 
-use lisparser::data::{IdData, LispModule, ListData};
+
+use core_syntax::a_ns::NS;
+use core_syntax::spec_etc::{ name_to_path};
+use inkwell::context::Context;
+use lisparser::data::{LispModule, ListData, SymData};
 use lisparser::parser::*;
+
+use core_syntax::CompileContext;
 
 pub use proc_macros::{
     make_simple_error_rules,
@@ -18,37 +28,18 @@ pub use proc_macros::{
 };
 
 
+
+
 /// Load Into Language Core
 pub fn load_core() -> Result<(), Box<dyn Error>> {
-    let core_path = Path::new("./core");
-    let mod_fn = Path::new("mod.bacore.lisp");
+    let vmctx = inkwell::context::Context::create();
+    let mut ctx = CompileContext::new("core", &vmctx);
 
-    let core_mod_path= core_path.join(mod_fn);
+    let core_dir = Path::new("./core");
 
-    load_file(&core_mod_path)?;
-
-
-    Ok(())
-}
-
-
-pub fn load_file(path: &Path) -> Result<(), Box<dyn Error>> {
-    let mut parser = LispParser::new(path)?;
-    let lm = parser.parse()?;
+    let ns: NS = NS::try_from(core_dir)?;
+    ns.load(&mut ctx)?;
 
     Ok(())
 }
-
-fn analyze(lispmodule: LispModule) -> Result<(), Box<dyn Error>> {
-    for paren_list in lispmodule.lists {
-        if let ListData::NonNil(nonnil) = paren_list {
-            let id_data: IdData = (*nonnil.head).try_into()?;
-
-
-        }
-    }
-
-    Ok(())
-}
-
 
