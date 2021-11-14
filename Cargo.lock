@@ -41,6 +41,7 @@ checksum = "cdb031dd78e28731d87d56cc8ffef4a8f36ca26c38fe2de700543e627f8a464a"
 name = "bac"
 version = "0.1.0"
 dependencies = [
+ "bacommon",
  "bacore",
  "bare-proc-macros",
  "clap",
@@ -57,9 +58,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "bacommon"
+version = "0.1.0"
+dependencies = [
+ "bare-proc-macros",
+ "inkwell",
+]
+
+[[package]]
 name = "bacore"
 version = "0.1.0"
 dependencies = [
+ "bacommon",
  "bare-proc-macros",
  "convert_case",
  "indexmap",

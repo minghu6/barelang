@@ -697,7 +697,9 @@ pub fn gen_gensym_ser(base: &str, mut counter: CounterType) -> SymGen {
 mod test {
     use std::path::PathBuf;
 
-    use crate::frontend::lexer::{tokenize, trim_tokens, SrcFileInfo};
+    use bacommon::lexer::SrcFileInfo;
+
+    use crate::frontend::lexer::{tokenize, trim_tokens};
     use crate::frontend::manual_parser::Parser;
     use crate::{VerboseLv, VERBOSE};
 

@@ -2,9 +2,11 @@ use std::cell::RefCell;
 use std::error::Error;
 use std::rc::Rc;
 
+use bacommon::lexer::SrcLoc;
+
 use crate::make_simple_error_rules;
 use crate::middleware::datair::{BaDecVal, BaId, BaPriVal};
-use crate::frontend::lexer::{SrcLoc, Token};
+use crate::frontend::lexer::{ Token};
 
 
 ////////////////////////////////////////////////////////////////////////////////

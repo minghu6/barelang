@@ -1,5 +1,7 @@
 #![allow(unused_imports)]
 
+use bacommon::config::{CompilerConfig, EmitType, OptLv, PrintTy, TargetType, usize_len};
+use bacommon::lexer::SrcFileInfo;
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::{Context, ContextRef};
@@ -44,16 +46,16 @@ use crate::frontend::datalsp::*;
 use crate::middleware::datair::*;
 use crate::middleware::ml_simplifier::gensym_rand;
 use crate::rsclib::search_rs_lib;
-use crate::utils::usize_len;
 use crate::*;
 
 pub fn codegen(
     config: &CompilerConfig,
+    src: SrcFileInfo,
     bamod: BaMod,
 ) -> Result<(), Box<dyn Error>> {
     let context = Context::create();
 
-    let mut codegen = CodeGen::new(&context, config, bamod);
+    let mut codegen = CodeGen::new(&context, config, src, bamod);
 
     codegen.codegen()
 }
@@ -83,9 +85,10 @@ impl<'ctx> CodeGen<'ctx> {
     fn new(
         context: &'ctx Context,
         config: &'ctx CompilerConfig,
+        src: SrcFileInfo,
         bamod: BaMod,
     ) -> Self {
-        let module = context.create_module(config.get_module_name().as_str());
+        let module = context.create_module("");
         let fpm = PassManager::create(&module);
 
         fpm.add_instruction_combining_pass();
@@ -110,8 +113,8 @@ impl<'ctx> CodeGen<'ctx> {
         let (dibuilder, cu) = module.create_debug_info_builder(
             true, // allow unresolved
             DWARFSourceLanguage::C,
-            &config.filename(),
-            &config.dirname(),
+            &src.filename(),
+            &src.dirname(),
             "BAC",
             is_opt,
             "",
@@ -806,7 +809,7 @@ impl<'ctx> CodeGen<'ctx> {
                 BaPriVal::Vector(_vec) => {
                     todo!()
                 },
-                BaPriVal::Range(range) => todo!()
+                BaPriVal::Range(_range) => todo!()
             }
         }
 
@@ -1032,7 +1035,7 @@ impl<'ctx> CodeGen<'ctx> {
             BaPriVal::Lit(lit) => self.codegen_lit(&lit),
             BaPriVal::Id(id) => Ok(self.get_sym_item(&id.name).unwrap()),
             BaPriVal::Vector(vec) => self.codegen_vector(vec),
-            BaPriVal::Range(range) => todo!()
+            BaPriVal::Range(_range) => todo!()
         }
     }
 
@@ -1127,26 +1130,16 @@ pub fn isize_type<'ctx>(context: &'ctx Context) -> IntType<'ctx> {
 }
 
 
-///
-impl Into<OptimizationLevel> for OptLv {
-    fn into(self) -> OptimizationLevel {
-        match &self {
-            Self::Debug => OptimizationLevel::None,
-            Self::Opt(1) => OptimizationLevel::Less,
-            Self::Opt(2) => OptimizationLevel::Default,
-            _ => OptimizationLevel::Aggressive,
-        }
-    }
-}
-
 #[cfg(test)]
 mod test {
     use std::path::PathBuf;
 
-    use crate::frontend::lexer::{tokenize, trim_tokens, SrcFileInfo};
+    use bacommon::config::{CompilerConfig, EmitType, OptLv, PrintTy, TargetType};
+    use bacommon::lexer::SrcFileInfo;
+
+    use crate::frontend::lexer::{tokenize, trim_tokens};
     use crate::frontend::manual_parser::Parser;
-    use crate::utils::PrintTy;
-    use crate::{CompilerConfig, VerboseLv, VERBOSE};
+    use crate::{VerboseLv, VERBOSE};
 
     use crate::middleware::ml_simplifier::MLSimplifier;
 
@@ -1167,16 +1160,15 @@ mod test {
             SrcFileInfo::new(PathBuf::from("./examples/exp2.ba")).unwrap();
         let out = PathBuf::from("out.o");
         let config = CompilerConfig {
-            file,
-            optlv: crate::OptLv::Debug,
-            target_type: crate::TargetType::Bin,
+            optlv: OptLv::Debug,
+            target_type: TargetType::Bin,
+            emit_type: EmitType::LLVMIR,
             // emit_type: crate::EmitType::Obj,
             // print_type: PrintTy::File(out),
-            emit_type: crate::EmitType::LLVMIR,
             print_type: PrintTy::StdErr,
         };
 
-        let tokens = tokenize(&config.file);
+        let tokens = tokenize(&file);
         let tokens = trim_tokens(tokens);
 
         let mut parser = Parser::new(tokens);
@@ -1185,6 +1177,6 @@ mod test {
         let mlslf = MLSimplifier::new(ml);
         let bin = mlslf.simplify().unwrap();
 
-        codegen(&config, bin).unwrap();
+        codegen(&config, file, bin).unwrap();
     }
 }

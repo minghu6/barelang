@@ -20,7 +20,7 @@ pub(crate) fn is_struct_type(x: &str, ctx: &CompileContext) -> bool {
 
 
 #[inline]
-pub(crate) fn is_template_struct_type(x: &str, ctx: &CompileContext) -> bool {
+pub(crate) fn is_template_struct_type(_x: &str, _ctx: &CompileContext) -> bool {
     // ctx.template_struct_map.contains_key(x)
 
     true

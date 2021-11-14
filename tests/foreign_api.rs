@@ -1,6 +1,8 @@
 #![allow(unused_imports)]
 #![feature(path_file_prefix)]
 
+use bacommon::linker::link_default;
+use bacommon::runner::run_bin;
 use inkwell::context::Context;
 use inkwell::module::{Linkage, Module};
 use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
@@ -18,7 +20,7 @@ use std::path::Path;
 
 mod common;
 
-use bac::{link_default, run_bin};
+
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Running Error

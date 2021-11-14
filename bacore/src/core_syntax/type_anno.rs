@@ -4,7 +4,7 @@ use inkwell::{types::BasicTypeEnum, AddressSpace};
 use itertools::Itertools;
 
 use super::{a_struct::AStruct, CompileContext};
-use crate::error::*;
+use bacommon::error::*;
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Common Traits
@@ -45,10 +45,10 @@ pub enum TemplateTypeAnno {
 impl TemplateTypeAnno {
     pub fn replace_addr_mode(self, new_addr_mode: AddrMode) -> Self {
         match self {
-            Self::TemplateStruct(name, idxs, addr_mode) => {
+            Self::TemplateStruct(name, idxs, _addr_mode) => {
                 Self::TemplateStruct(name, idxs, new_addr_mode)
             }
-            Self::Itself(idx, addr_mode) => Self::Itself(idx, new_addr_mode),
+            Self::Itself(idx, _addr_mode) => Self::Itself(idx, new_addr_mode),
         }
     }
 }
@@ -65,10 +65,10 @@ pub enum ConcreteTypeAnno {
 impl ConcreteTypeAnno {
     pub fn replace_addr_mode(self, new_addr_mode: AddrMode) -> Self {
         match self {
-            Self::Primitive(name, addr_mode) => {
+            Self::Primitive(name, _addr_mode) => {
                 Self::Primitive(name, new_addr_mode)
             }
-            Self::Struct(name, addr_mode) => Self::Struct(name, new_addr_mode),
+            Self::Struct(name, _addr_mode) => Self::Struct(name, new_addr_mode),
         }
     }
 }

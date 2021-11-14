@@ -1,26 +1,24 @@
 #![feature(box_syntax)]
 #![feature(type_alias_impl_trait)]
 
+
 #[allow(unused_imports)]
 #[allow(unused_import_braces)]
 
 
 pub(crate) mod core_syntax;
 pub(crate) mod parse_phase_2;
-pub mod error;
 
 
-use std::path::{Path, PathBuf};
+use std::marker::PhantomData;
 use std::error::Error;
 
-
-use core_syntax::a_ns::NS;
-use core_syntax::spec_etc::{ name_to_path};
+use bacommon::config::CompilerConfig;
 use inkwell::context::Context;
-use lisparser::data::{LispModule, ListData, SymData};
-use lisparser::parser::*;
 
-use core_syntax::CompileContext;
+use core_syntax::a_ns::ANS;
+use bacommon::env::*;
+
 
 pub use proc_macros::{
     make_simple_error_rules,
@@ -28,18 +26,37 @@ pub use proc_macros::{
 };
 
 
-
-
-/// Load Into Language Core
-pub fn load_core() -> Result<(), Box<dyn Error>> {
-    let vmctx = inkwell::context::Context::create();
-    let mut ctx = CompileContext::new("core", &vmctx);
-
-    let core_dir = Path::new("./core");
-
-    let ns: NS = NS::try_from(core_dir)?;
-    ns.load(&mut ctx)?;
-
-    Ok(())
+pub struct VMCtxHolder<'ctx> {
+    vmctx: Context,
+    _marker: PhantomData<&'ctx ()>
 }
+
+
+impl<'ctx> VMCtxHolder<'ctx> {
+    pub fn new() -> Self {
+        VMCtxHolder {
+            vmctx: Context::create(),
+            _marker: PhantomData
+        }
+    }
+
+
+    /// Load Into Language Core
+    pub fn load_core(&'ctx self) -> Result<ANS<'ctx>, Box<dyn Error>> {
+        let core_dir = core_src_dir();
+
+        let mut ns: ANS = ANS::init(core_dir.as_path(), &self.vmctx)?;
+        ns.load()?;
+
+        Ok(ns)
+    }
+
+    pub fn gen_core_lib(&self, config: &CompilerConfig) -> Result<(), Box<dyn Error>> {
+        let ns = self.load_core()?;
+
+        ns.print(config)
+    }
+
+}
+
 

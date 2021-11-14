@@ -114,7 +114,9 @@ impl Parser {
 
     #[inline]
     fn verbose_enable(&self) -> bool {
-        verbose_enable_v2() && !self.is_try_mode()
+        unsafe {
+             VERBOSE >= VerboseLv::V2 && !self.is_try_mode()
+        }
     }
 
     #[inline]
@@ -1339,7 +1341,9 @@ mod test {
 
     use std::path::PathBuf;
 
-    use crate::frontend::lexer::{tokenize, SrcFileInfo};
+    use bacommon::lexer::SrcFileInfo;
+
+    use crate::frontend::lexer::{tokenize};
     use crate::frontend::manual_parser::Parser;
     use crate::{VerboseLv, VERBOSE};
 

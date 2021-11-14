@@ -1,6 +1,8 @@
 #![allow(unused_imports)]
 #![feature(path_file_prefix)]
 
+use bacommon::linker::link_default;
+use bacommon::runner::run_bin;
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
@@ -29,7 +31,7 @@ mod common;
 
 use crate::common::print_obj;
 use bac::backend::codegen::{create_entry_block_alloca, isize_type};
-use bac::{link_default, run_bin};
+
 
 /// ```none
 /// struct SeqGenCtx {

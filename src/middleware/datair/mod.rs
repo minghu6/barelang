@@ -7,12 +7,13 @@ use std::cell::RefCell;
 use std::fmt;
 use std::error::Error;
 
+use bacommon::lexer::SrcLoc;
 use indexmap::{IndexMap, indexmap};
 use inkwell::values::BasicValueEnum;
 use itertools::Itertools;
 
 use crate::error::TrapCode;
-use crate::frontend::lexer::{SrcLoc, Token};
+use crate::frontend::lexer::Token;
 use crate::frontend::manual_parser::BOP_PREC_MAP;
 
 mod syntax;

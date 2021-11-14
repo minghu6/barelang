@@ -1,26 +1,23 @@
-use std::fs;
 use std::error::Error;
-use std::path::{ PathBuf};
-use std::time::{
-    SystemTime, UNIX_EPOCH
-};
+use std::fs;
+use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use bac::middleware::ml_simplifier::MLSimplifier;
-use bac::utils::PrintTy;
-// use clap::{
-//     App, Arg, SubCommand
-// };
-use clap::{
-    clap_app
+use bacommon::config::{
+    CompilerConfig, EmitType, OptLv, PrintTy, TargetType, VerboseLv,
 };
+use bacommon::env::libcore_path;
+use bacommon::error::XXXError;
+use bacommon::lexer::SrcFileInfo;
+use bacommon::linker::link;
+use bacore::VMCtxHolder;
+use clap::clap_app;
+use clap::{ArgMatches};
 
-use bac::frontend::lexer::{SrcFileInfo, tokenize};
-use bac::frontend::manual_parser::{
-    Parser
-};
-use bac::backend::codegen::{
-    codegen
-};
+use bac::backend::codegen::codegen;
+use bac::frontend::lexer::tokenize;
+use bac::frontend::manual_parser::Parser;
 
 use bac::*;
 
@@ -33,22 +30,7 @@ fn unique_suffix() -> String {
 }
 
 
-fn main() -> Result<(), Box<dyn Error>> {
-    let matches = clap_app!(bac =>
-        (version: "0.1.0")
-        (author: "minghu6")
-        (about: "Bare Language Compiler")
-        (@arg FILE: +required "input source file (exp *.ba)")
-        (@arg target_type: -t --target +takes_value "[bin|dylib|reloc] default: bin")
-        (@arg emit_type: -e --emit +takes_value "[llvm-ir|asm|obj] default: obj")
-        (@arg print_type: -p --print +takes_value "[stderr|path] default: path (stderr doesn't support `emit_type: obj`)")
-        (@arg O2: -O "Optimized code")
-        (@arg Verbose: -V --verbose +takes_value "verbose level: 0, 1, 2")
-        (@arg output: -o --output +takes_value "object file output path")
-        (@arg dryrun: --dry "DRY RUN print config")
-
-    ).get_matches();
-
+fn handle_main(matches: ArgMatches) -> Result<(), Box<dyn Error>> {
     /* Build File && Output */
     let source_file_path = matches.value_of("FILE").unwrap();
 
@@ -56,55 +38,40 @@ fn main() -> Result<(), Box<dyn Error>> {
     let file = SrcFileInfo::new(input)?;
 
     /* Build Target Type */
-    let target_type
-    = if let Some(target_type) = matches.value_of("target_type") {
-        match target_type {
-            "bin" => {
-                TargetType::Bin
-            },
-            _ => unimplemented!()
-        }
-    }
-    else {
-        TargetType::Bin
-    };
+    let target_type =
+        if let Some(target_type) = matches.value_of("target_type") {
+            match target_type {
+                "bin" => TargetType::Bin,
+                _ => unimplemented!(),
+            }
+        } else {
+            TargetType::Bin
+        };
 
     /* Emit Type */
-    let emit_type
-    = if let Some(emit_type) = matches.value_of("emit_type") {
+    let emit_type = if let Some(emit_type) = matches.value_of("emit_type") {
         match emit_type {
-            "obj" => {
-                EmitType::Obj
-            },
-            "asm" => {
-                EmitType::Asm
-            },
-            "llvm-ir" => {
-                EmitType::LLVMIR
-            },
-            _ => unimplemented!()
+            "obj" => EmitType::Obj,
+            "asm" => EmitType::Asm,
+            "llvm-ir" => EmitType::LLVMIR,
+            _ => unimplemented!(),
         }
-    }
-    else {
+    } else {
         EmitType::Obj
     };
 
     /* Build OptLv */
-    let optlv
-    = if matches.is_present("O2") {
+    let optlv = if matches.is_present("O2") {
         OptLv::Opt(2)
-    }
-    else {
+    } else {
         OptLv::Debug
     };
 
     /* Build Verbose */
     unsafe {
-        VERBOSE =
-        if let Some(vs) = matches.value_of("Verbose") {
+        VERBOSE = if let Some(vs) = matches.value_of("Verbose") {
             VerboseLv::from(vs.parse::<usize>()?)
-        }
-        else {
+        } else {
             VerboseLv::V0
         }
     }
@@ -112,44 +79,40 @@ fn main() -> Result<(), Box<dyn Error>> {
     match emit_type {
         EmitType::LLVMIR => {
             /* Print Type */
-            let print_type
-            = if let Some(print_type) = matches.value_of("print_type") {
-                match print_type {
-                    "path" => {
-                        let output = match matches.value_of("output") {
-                            Some(output) => output,
-                            None => "a.ll"
-                        };
-                        let objpath = PathBuf::from(output);
+            let print_type =
+                if let Some(print_type) = matches.value_of("print_type") {
+                    match print_type {
+                        "path" => {
+                            let output = match matches.value_of("output") {
+                                Some(output) => output,
+                                None => "a.ll",
+                            };
+                            let objpath = PathBuf::from(output);
 
-                        PrintTy::File(objpath)
-                    },
-                    "stderr" => {
-                        PrintTy::StdErr
-                    },
-                    _ => unimplemented!()
-                }
-            }
-            else {
-                PrintTy::StdErr
-            };
+                            PrintTy::File(objpath)
+                        }
+                        "stderr" => PrintTy::StdErr,
+                        _ => unimplemented!(),
+                    }
+                } else {
+                    PrintTy::StdErr
+                };
 
             let compiler_config = CompilerConfig {
                 optlv,
                 target_type,
-                file,
                 emit_type,
-                print_type
+                print_type,
             };
 
             // dry run point
             if matches.is_present("dryrun") {
                 println!("{:#?}", compiler_config);
-                return Ok(())
+                return Ok(());
             }
 
-            compile(&compiler_config)?;
-        },
+            compile(&compiler_config, file)?;
+        }
         EmitType::Obj => {
             match target_type {
                 TargetType::Bin => {
@@ -162,47 +125,104 @@ fn main() -> Result<(), Box<dyn Error>> {
                     let compiler_config = CompilerConfig {
                         optlv,
                         target_type,
-                        file,
                         emit_type,
-                        print_type
+                        print_type,
                     };
 
                     // dry run point
                     if matches.is_present("dryrun") {
                         println!("{:#?}", compiler_config);
-                        return Ok(())
+                        return Ok(());
                     }
 
-                    compile(&compiler_config)?;
+                    compile(&compiler_config, file)?;
 
                     let output = match matches.value_of("output") {
                         Some(output) => output,
-                        None => "a.out"
+                        None => "a.out",
                     };
 
                     link(output, &[&tmp_out_fn])?;
 
                     fs::remove_file(tmp_out_fn)?;
-                },
-                _ => todo!()
+                }
+                _ => todo!(),
             }
-
-        },
-        EmitType::Asm => todo!()
+        }
+        EmitType::Asm => todo!(),
     }
-
 
     Ok(())
 }
 
 
+fn handle_precompile(matches: ArgMatches) -> Result<(), Box<dyn Error>> {
+    /* Build Target Type */
+    let target_type = TargetType::DyLib;
+
+    /* Emit Type */
+    let emit_type = if let Some(emit_type) = matches.value_of("emit_type") {
+        match emit_type {
+            "obj" => EmitType::Obj,
+            "llvm-ir" => EmitType::LLVMIR,
+            _ => return Err(XXXError::new_box_err(&emit_type.to_string())),
+        }
+    } else {
+        EmitType::Obj
+    };
+
+    /* Build OptLv */
+    let optlv = if matches.is_present("O2") {
+        OptLv::Opt(2)
+    } else {
+        OptLv::Debug
+    };
+
+    /* Build Verbose */
+    unsafe {
+        VERBOSE = if let Some(vs) = matches.value_of("Verbose") {
+            VerboseLv::from(vs.parse::<usize>()?)
+        } else {
+            VerboseLv::V0
+        }
+    }
+
+    /* Print Type */
+    let print_type =
+    if let Some(print_type) = matches.value_of("print_type") {
+        match print_type {
+            "path" => {
+                PrintTy::File(libcore_path())
+            }
+            "stderr" => PrintTy::StdErr,
+            _ => unimplemented!(),
+        }
+    } else {
+        PrintTy::File(libcore_path())
+    };
+
+    let compiler_config = CompilerConfig {
+        optlv,
+        target_type,
+        emit_type,
+        print_type,
+    };
+
+
+    let holder = VMCtxHolder::new();
+
+    holder.gen_core_lib(&compiler_config)
+
+}
+
+
 /// Compile source code string
-pub fn compile(config: &CompilerConfig) -> Result<(), Box<dyn Error>> {
-    let tokens = tokenize(&config.file);
+pub fn compile(config: &CompilerConfig, file: SrcFileInfo) -> Result<(), Box<dyn Error>> {
+    let tokens = tokenize(&file);
     let tokens = tokens
-    .into_iter()
-    .filter(|tok| tok.name() != "<sp>" && !tok.name().contains("comment"))
-    .collect();
+        .into_iter()
+        .filter(|tok| tok.name() != "<sp>" && !tok.name().contains("comment"))
+        .collect();
 
     let mut parser = Parser::new(tokens);
     let ml = parser.parse()?;
@@ -217,6 +237,41 @@ pub fn compile(config: &CompilerConfig) -> Result<(), Box<dyn Error>> {
         println!("BaBin:\n{:#?}", bin);
     }
 
-    codegen(&config, bin)?;
-    Ok(())
+    codegen(&config, file, bin)
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let matches = clap_app!(bac =>
+        (version: "0.1.0")
+        (author: "minghu6")
+        (about: "Bare Language Compiler")
+
+        (@subcommand compile =>
+            (@arg FILE: +required "input source file (exp *.ba)")
+            (@arg target_type: -t --target +takes_value "[bin|dylib|reloc] default: bin")
+            (@arg emit_type: -e --emit +takes_value "[llvm-ir|asm|obj] default: obj")
+            (@arg print_type: -p --print +takes_value "[stderr|path] default: path (stderr doesn't support `emit_type: obj`)")
+            (@arg O2: -O "Optimized code")
+            (@arg Verbose: -V --verbose +takes_value "verbose level: 0, 1, 2")
+            (@arg output: -o --output +takes_value "object file output path")
+            (@arg dryrun: --dry "DRY RUN print config")
+        )
+        (@subcommand precompile =>
+            (about: "compile runtime binary")
+            (@arg emit_type: -e --emit +takes_value "[llvm-ir|obj] default: obj")
+            (@arg print_type: -p --print +takes_value "[stderr|path] default: path")
+            (@arg O2: -O "Optimized code")
+            (@arg Verbose: -V --verbose +takes_value "verbose level: 0, 1, 2")
+        )
+
+    ).get_matches();
+
+    let handler = if let Some(_precompile_match) = matches.subcommand_matches("precompile") {
+        handle_precompile
+    }
+    else {
+        handle_main
+    };
+
+    handler(matches)
 }

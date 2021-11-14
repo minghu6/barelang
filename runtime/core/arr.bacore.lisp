@@ -3,7 +3,7 @@
 
 
 ; (template-struct [generic-type+] struct-name [params?])
-(def-template-struct [T] MemBuf
+(def-template-struct MemBuf [T]
     [
         { :type-primitive usize } cap  ; ^{ :type-primitive 'usize }
         { :type-template T :addr ptr :generic [T] } ptr
@@ -12,7 +12,7 @@
 
 
 ; (template-fn [generic-type+] struct-name [params?] ret [stmt*])
-(def-template-fn [T] index-of
+(def-template-fn index-of [T]
     [
      { :type-struct MemBuf :generic [T] } buf
      { :type-primitive usize } idx

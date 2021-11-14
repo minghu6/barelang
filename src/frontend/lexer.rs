@@ -1,12 +1,14 @@
+use bacommon::lexer::SrcFileInfo;
+use bacommon::lexer::SrcLoc;
 use regex::Regex;
 use lazy_static::lazy_static;
 use itertools::Itertools;
 
-use std::fmt::{Debug, Display};
-use std::path::PathBuf;
+use std::fmt::{Debug};
+
 use std::{fmt, vec};
-use std::fs;
-use std::error::Error;
+
+
 
 use crate::frontend::gram::*;
 use crate::frontend::rules::{LexSt, barelang_lexdfamap, barelang_token_matcher_vec};
@@ -50,122 +52,7 @@ impl fmt::Display for Token {
 
 
 
-////////////////////////////////////////////////////////////////////////////////
-//// Source File Structure
 
-
-/// SrcFileInfo
-#[allow(dead_code)]
-#[derive(PartialEq, Eq)]
-pub struct SrcFileInfo {
-    /// Source file path
-    path: PathBuf,
-
-    /// lines[x]: number of total chars until lines x [x]
-    /// inspired by `proc_macro2`: `FileInfo`
-    lines: Vec<usize>,
-
-    srcstr: String
-}
-
-impl SrcFileInfo {
-    pub fn new(path: PathBuf) -> Result<Self, Box<dyn Error>> {
-        let srcstr = fs::read_to_string(&path)?;
-
-        let lines = Self::build_lines(&srcstr);
-
-        Ok(Self {
-            path,
-            lines,
-            srcstr
-        })
-    }
-
-    fn build_lines(srcstr: &str) -> Vec<usize> {
-        let mut lines = vec![0];
-        let mut total = 0usize;
-
-        for c in srcstr.chars() {
-            total += 1;
-
-            if c == '\n' {
-                lines.push(total);
-            }
-        }
-
-        lines
-    }
-
-    pub fn get_srcstr(&self) -> &str {
-        &self.srcstr
-    }
-
-    pub fn get_path(&self) -> &PathBuf {
-        &self.path
-    }
-
-    pub fn offset2srcloc(&self, offset: usize) -> SrcLoc {
-        match self.lines.binary_search(&offset) {
-            Ok(found) => {
-                SrcLoc {
-                    ln: found,
-                    col: 0  // 换行处
-                }
-            },
-            Err(idx) => {
-                SrcLoc {
-                    ln: idx,
-                    col: offset - self.lines[idx - 1]  // 显然idx >= 0
-                }
-            }
-        }
-    }
-}
-
-impl fmt::Debug for SrcFileInfo {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SrcFileInfo").field("path", &self.path).finish()
-    }
-}
-
-
-#[derive(Clone, PartialEq, Eq, PartialOrd)]
-pub struct SrcLoc {
-    pub ln: usize,
-    pub col: usize
-}
-
-impl SrcLoc {
-    pub fn new(loc_tuple: (usize, usize)) -> Self {
-        Self {
-            ln: loc_tuple.0,
-            col: loc_tuple.1
-        }
-    }
-}
-
-impl Debug for SrcLoc {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self)
-    }
-}
-
-impl Display for SrcLoc {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "({}, {})", self.ln, self.col)
-    }
-}
-
-impl Ord for SrcLoc {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        if self.ln == other.ln {
-            self.col.cmp(&other.col)
-        }
-        else {
-            self.ln.cmp(&other.ln)
-        }
-    }
-}
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -257,6 +144,8 @@ lazy_static! {
     /// 为方便起见, matcher允许存在交集, 顺序决定优先级
     pub static ref TOKEN_MATCHER_VEC: TokenMatcherVec = barelang_token_matcher_vec();
 }
+
+
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Lexer

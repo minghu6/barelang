@@ -4,8 +4,8 @@ use inkwell::{builder::Builder, values::BasicValueEnum};
 use lisparser::data::*;
 
 use super::{CompileContext, a_fn::LocalContext, a_value::AValue, type_anno::ConcreteTypeAnno};
-use crate::{core_syntax::name_mangling::rename_fn_alias, error::*};
-
+use crate::{core_syntax::name_mangling::rename_fn_alias};
+use bacommon::error::*;
 
 pub(crate) type FormHandle<'ctx> = fn(&mut CompileContext<'ctx>, &LocalContext<'ctx>, Builder<'ctx>, Box<ListData>) -> Result<Option<AValue<'ctx>>, Box<dyn Error>>;
 
@@ -37,7 +37,7 @@ pub(crate) fn handle_form<'ctx>(
 
 
 
-    let form_res = dyn_form_handle(
+    let _form_res = dyn_form_handle(
         cctx,
         lctx,
         builder,
@@ -86,10 +86,10 @@ pub(crate) fn handle_spl_form_attr<'ctx>(
 
 
 pub(crate) fn handle_norm_form_attr<'ctx>(
-    cctx: &mut CompileContext<'ctx>,
-    lctx: &LocalContext<'ctx>,
-    builder: Builder<'ctx>,
-    tail: Box<ListData>,
+    _cctx: &mut CompileContext<'ctx>,
+    _lctx: &LocalContext<'ctx>,
+    _builder: Builder<'ctx>,
+    _tail: Box<ListData>,
 ) -> Result<Option<AValue<'ctx>>, Box<dyn Error>> {
 
 

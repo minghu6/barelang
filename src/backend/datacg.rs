@@ -6,6 +6,7 @@ use std::{
     rc::Rc,
 };
 
+use bacommon::config::usize_len;
 use indexmap::{indexmap, IndexMap};
 use inkwell::values::{
     BasicValueEnum, FloatValue, FunctionValue, IntValue, PointerValue,
@@ -14,7 +15,6 @@ use inkwell::values::{
 use crate::{
     error::TrapCode,
     middleware::datair::{BaFunHdr, BaType},
-    utils::usize_len,
 };
 
 pub trait TryGetBasicValue<'ctx> {

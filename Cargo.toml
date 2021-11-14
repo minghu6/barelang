@@ -20,7 +20,6 @@ either = "1.6.*"
 [dependencies.proc_macros]
 package = "bare-proc-macros"
 path = "proc_macros"
-version = "0.1.0"  # Same as main
 
 [dependencies.rsclib]
 package = "rsc"
@@ -30,6 +29,10 @@ path = "lib/rsclib"
 package = "bacore"
 path = "bacore"
 
+[dependencies.bacommon]
+package = "bacommon"
+path = "bacommon"
+
 
 [workspace]
-members = ["proc_macros", "lib/rsclib", "bacore"]
+members = ["proc_macros", "lib/rsclib", "bacore", "bacommon"]

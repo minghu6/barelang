@@ -1,6 +1,3 @@
-use std::path::PathBuf;
-use std::error::Error;
-use std::fmt::Display;
 
 
 pub type CounterType = impl FnMut() -> usize;
@@ -19,29 +16,6 @@ pub fn gen_counter_1(init: usize) -> CounterType {
     }
 }
 
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum PrintTy {
-    StdErr,
-    File(PathBuf)
-}
-
-impl PrintTy {
-    pub fn get_path(&self) -> Option<PathBuf> {
-        if let Self::File(ref path) = self {
-            Some(path.clone())
-        }
-        else {
-            None
-        }
-    }
-}
-
-
-pub fn usize_len() -> usize {
-    if cfg!(target_pointer_width="64") { 8 }
-    else { 4 }
-}
 
 
 /// ```none
@@ -112,28 +86,6 @@ pub fn unescape_str(escaped_str: &str) -> Result<String, char> {
 }
 
 
-////////////////////////////////////////////////////////////////////////////////
-//// Running Error
-
-#[derive(Debug)]
-pub struct RunningError {
-    code: i32
-}
-
-impl Error for RunningError {
-}
-
-impl Display for RunningError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.code)
-    }
-}
-
-impl RunningError {
-    pub fn as_box_err(code: i32) -> Box<dyn Error> {
-        Box::new(Self { code })
-    }
-}
 
 
 /// (literal | expr | ident): 3x3

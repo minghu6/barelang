@@ -3,19 +3,18 @@ use std::error::Error;
 use itertools::Itertools;
 use lisparser::data::*;
 
-use crate::{
-    core_syntax::{
-        a_fn::{AFn, ConcreteParam},
-        a_struct::{AStruct, ConcreteField},
-        name_mangling::{concat_overload_name, NameConcatStyle},
-        spec_etc::*,
-        template_fn::{Param, TemplateFn},
-        template_struct::TemplateStruct,
-        type_anno::{AddrMode, ConcreteTypeAnno, TemplateTypeAnno, TypeAnno},
-        CompileContext,
-    },
-    error::*,
+use crate::core_syntax::{
+    a_fn::{AFn, ConcreteParam},
+    a_struct::{AStruct, ConcreteField},
+    name_mangling::{concat_overload_name, NameConcatStyle},
+    spec_etc::*,
+    template_fn::{Param, TemplateFn},
+    template_struct::TemplateStruct,
+    type_anno::{AddrMode, ConcreteTypeAnno, TemplateTypeAnno, TypeAnno},
+    CompileContext,
 };
+
+use bacommon::error::*;
 
 #[allow(unused)]
 type ItemParser = fn(Box<ListData>) -> Result<(), Box<dyn Error>>;
@@ -47,8 +46,6 @@ pub(crate) fn parse(
 
     Ok(())
 }
-
-
 
 fn parse_def_struct(
     ctx: &mut CompileContext,
@@ -223,28 +220,31 @@ fn parse_generic_name(
     Ok(generic_strs)
 }
 
+
 fn parse_def_template_fn(
     ctx: &mut CompileContext,
     tail: Box<ListData>,
 ) -> Result<(), Box<dyn Error>> {
-    let any_data_vec = (*tail).flatten();
+    let mut any_data_iter = (*tail).flatten().into_iter();
 
-    let name_sym: SymData = any_data_vec[0].try_into()?;
+    let name_sym: SymData = any_data_iter.next().unwrap().try_into()?;
     let name = name_sym.val.to_owned();
 
-    let generic_tuple: BracketTupleData = any_data_vec[1].try_into()?;
+    let generic_tuple: BracketTupleData =
+        any_data_iter.next().unwrap().try_into()?;
     let generic_strs = parse_generic_name(generic_tuple)?;
 
-    let params_tuple: BracketTupleData = any_data_vec[2].try_into()?;
+    let params_tuple: BracketTupleData =
+        any_data_iter.next().unwrap().try_into()?;
     let params = parse_params(ctx, params_tuple, &generic_strs[..])?;
 
-    let ret = if let Ok(ret_map) = any_data_vec[2].try_into() {
+    let ret = if let Ok(ret_map) = any_data_iter.next().unwrap().try_into() {
         Some(parse_type_anno_map(ctx, ret_map, &generic_strs[..])?)
     } else {
         None
     };
 
-    let body_list: ListData = any_data_vec[3].try_into()?;
+    let body_list: ListData = any_data_iter.next().unwrap().try_into()?;
 
     ctx.template_fn_map.insert(
         name.clone(),
@@ -260,8 +260,9 @@ fn parse_def_template_fn(
     Ok(())
 }
 
+
 fn parse_type_anno_map(
-    ctx: &CompileContext,
+    _ctx: &CompileContext,
     type_anno_map: BraceMapData,
     templates_name: &[String],
 ) -> Result<TypeAnno, Box<dyn Error>> {
@@ -294,9 +295,9 @@ fn parse_type_anno_map(
         {
             let type_sym: SymData = type_any.try_into()?;
 
-            if !is_struct_type(&type_sym.val, ctx) {
-                return Err(XXXError::new_box_err(&type_sym.val));
-            }
+            // if !is_struct_type(&type_sym.val, ctx) {
+            //     return Err(XXXError::new_box_err(&type_sym.val));
+            // }
 
             if let Some(generic_any) = type_anno_map.get_by_keyword(":generic")
             {
@@ -341,7 +342,9 @@ fn parse_type_anno_map(
             {
                 TypeAnno::Template(TemplateTypeAnno::Itself(idx, addr))
             } else {
-                return Err(XXXError::new_box_err(type_sym.val.as_str()));
+                return Err(UnknownGenericNameError::new_box_err(
+                    type_sym.val.as_str(),
+                ));
             }
         } else {
             unreachable!("{:#?}", type_anno_map)
@@ -383,7 +386,6 @@ fn parse_fields(
     parse_params(ctx, params_tuple, templates_name)
 }
 
-
 #[ignore = "just skip"]
 #[allow(unused)]
 fn parse_ns(
@@ -392,7 +394,6 @@ fn parse_ns(
 ) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
-
 
 #[ignore = "just skip"]
 #[allow(unused)]

@@ -9,12 +9,13 @@ use std::{
     rc::Rc,
 };
 
+use bacommon::lexer::SrcLoc;
 use indexmap::IndexMap;
 use regex::NoExpand;
 
 use crate::error::BaCErr;
 use crate::frontend::lexer::{
-    Token, SrcLoc
+    Token
 };
 use crate::middleware::datair::*;
 

@@ -1,51 +1,31 @@
 use std::{error::Error, path::{Path, PathBuf}};
 
+use bacommon::{config::CompilerConfig, target_generator::TargetGenerator};
+use inkwell::context::Context;
 use itertools::Itertools;
 use m6stack::AnIteratorWrapper;
 use lisparser::{data::{BracketTupleData, NonNilListData, SymData}, parser::LispParser};
 
 
-use crate::{error::*, parse_phase_2};
+use crate::{parse_phase_2};
 
+use bacommon::error::*;
 use super::{CompileContext, spec_etc::{extract_index_path_from_dir, name_to_path}};
 
 ////////////////////////////////////////////////////////////////////////////////
 //// `NS` Form
 
-pub(crate) struct NS {
-    pub(crate) name: String,      // namespace name
+pub struct ANS<'ctx> {
+    pub name: String,      // namespace name
     pub(crate) mods: Vec<String>, // modules name belongs to the namespace
-    pub(crate) path: PathBuf
+    pub(crate) path: PathBuf,
+    pub(crate) ctx: CompileContext<'ctx>
 }
 
-impl NS {
-    pub(crate) fn sub_paths(&self) -> AnIteratorWrapper<PathBuf> {
-        let iter = box self.mods
-        .iter()
-        .map(|sub| {
-            let sub_name = name_to_path(sub);
-            self.path.join(sub_name)
-        });
-
-        AnIteratorWrapper {
-            iter
-        }
-    }
-
-    pub(crate) fn load(&self, ctx: &mut CompileContext) -> Result<(), Box<dyn Error>> {
-        for sub in self.sub_paths() {
-            load_file(&sub, ctx)?;
-        }
-
-        Ok(())
-    }
-}
-
-
-impl TryFrom<&Path> for NS {
-    type Error = Box<dyn Error>;
-
-    fn try_from(dir: &Path) -> Result<Self, Self::Error> {
+impl<'ctx> ANS<'ctx> {
+    pub fn init(dir: &Path, vmctx: &'ctx Context) -> Result<Self, Box<dyn Error>> {
+        let dirname = dir.file_name().unwrap().to_str().unwrap();
+        let ctx = CompileContext::new(dirname, vmctx);
         let index_path= extract_index_path_from_dir(dir);
 
         let mut parser = LispParser::new(&index_path)?;
@@ -76,17 +56,50 @@ impl TryFrom<&Path> for NS {
                     mods.push(TryInto::<SymData>::try_into(item_any)?.val)
                 }
 
-                NS {
+                ANS {
                     name,
                     mods,
                     path: dir.to_owned(),
+                    ctx
                 }
             },
             other => return Err(XXXError::new_box_err(other))
         })
 
     }
+
+
+    pub(crate) fn sub_paths(&self) -> AnIteratorWrapper<PathBuf> {
+        let iter = box self.mods
+        .iter()
+        .map(|sub| {
+            let sub_name = name_to_path(sub);
+            self.path.join(sub_name)
+        });
+
+        AnIteratorWrapper {
+            iter
+        }
+    }
+
+
+    pub(crate) fn load(&mut self) -> Result<(), Box<dyn Error>> {
+        for sub in self.sub_paths().collect_vec().iter() {
+            load_file(&sub, &mut self.ctx)?;
+        }
+
+        Ok(())
+    }
+
+
+    pub fn print(&self, config: &CompilerConfig) -> Result<(), Box<dyn Error>> {
+        let gen = TargetGenerator::new(&self.ctx.vmmod, config);
+
+        gen.print()
+    }
 }
+
+
 
 /// Load recursively
 pub fn load_file(path: &Path, ctx: &mut CompileContext) -> Result<(), Box<dyn Error>> {

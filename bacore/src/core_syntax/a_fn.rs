@@ -9,13 +9,9 @@ use inkwell::{
 use itertools::Itertools;
 use lisparser::{data::*, pretty_printer::Dump};
 
-use super::{
-    a_value::AValue,
-    form_handel::{handle_norm_form_attr, handle_spl_form_attr},
-    name_mangling::{concat_overload_name, rename_fn_alias, NameConcatStyle},
-    CompileContext, ConcreteTypeAnno,
-};
-use crate::error::*;
+use super::{CompileContext, a_value::AValue, form_handel::{handle_norm_form_attr, handle_spl_form_attr}, name_mangling::{concat_overload_name, rename_fn_alias, NameConcatStyle}, type_anno::ConcreteTypeAnno};
+use bacommon::error::*;
+
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Fn `Form`
@@ -37,7 +33,7 @@ pub struct ConcreteParam {
 impl<'ctx> AFn {
     pub(crate) fn compile_declare(
         &self,
-        ctx: &'ctx mut CompileContext<'ctx>,
+        ctx: &mut CompileContext<'ctx>,
     ) -> Result<FunctionType<'ctx>, Box<dyn Error>> {
         if let Some(fn_t) = ctx.fn_map.get(&self.vm_name()) {
             return Ok(fn_t.clone());
@@ -62,7 +58,7 @@ impl<'ctx> AFn {
             }
         };
 
-        let fn_val =
+        let _fn_val =
             ctx.vmmod.add_function(&self.vm_name(), fn_t.clone(), None);
 
         ctx.fn_map.insert(self.vm_name(), fn_t.clone());

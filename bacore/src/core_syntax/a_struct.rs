@@ -8,7 +8,7 @@ use super::{
     type_anno::{AddrMode, ConcreteTypeAnnoGetter},
     CompileContext, ConcreteTypeAnno,
 };
-use crate::error::*;
+use bacommon::error::*;
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Struct `Form`
