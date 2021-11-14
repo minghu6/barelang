@@ -241,8 +241,7 @@ impl<'ctx> TypeAnno {
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-//// Utils
+
 
 pub(crate) fn compile_concrete_types<'ctx>(
     ctx: &mut CompileContext<'ctx>,

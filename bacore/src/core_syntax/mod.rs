@@ -67,6 +67,8 @@ pub(crate) enum TopLevelSyntax {
     Struct,
 }
 
+
+
 ////////////////////////////////////////////////////////////////////////////////
 //// Context (namespace one2one)
 
@@ -112,4 +114,3 @@ impl<'ctx> CompileContext<'ctx> {
         self.vmmod.get_name().to_str().unwrap().to_owned()
     }
 }
-

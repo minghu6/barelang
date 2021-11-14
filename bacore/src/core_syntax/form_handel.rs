@@ -7,7 +7,7 @@ use super::{CompileContext, a_fn::LocalContext, a_value::AValue, type_anno::Conc
 use crate::{core_syntax::name_mangling::rename_fn_alias};
 use bacommon::error::*;
 
-pub(crate) type FormHandle<'ctx> = fn(&mut CompileContext<'ctx>, &LocalContext<'ctx>, Builder<'ctx>, Box<ListData>) -> Result<Option<AValue<'ctx>>, Box<dyn Error>>;
+
 
 pub(crate) fn handle_form<'ctx>(
     cctx: &mut CompileContext<'ctx>,
@@ -33,8 +33,7 @@ pub(crate) fn handle_form<'ctx>(
         _ => {
             handle_norm_form_attr
         }
-    } as FormHandle;
-
+    };
 
 
     let _form_res = dyn_form_handle(

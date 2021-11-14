@@ -66,6 +66,7 @@ impl<'a, 'ctx> TargetGenerator<'a, 'ctx> {
                 XXXError::new_box_err(llvmstr.to_str().unwrap())
             })
         } else {
+
             Ok(self.vmmod.print_to_stderr())
         }
     }

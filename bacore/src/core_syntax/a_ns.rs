@@ -88,6 +88,8 @@ impl<'ctx> ANS<'ctx> {
             load_file(&sub, &mut self.ctx)?;
         }
 
+        compile_ns(&mut self.ctx)?;
+
         Ok(())
     }
 
@@ -102,7 +104,7 @@ impl<'ctx> ANS<'ctx> {
 
 
 /// Load recursively
-pub fn load_file(path: &Path, ctx: &mut CompileContext) -> Result<(), Box<dyn Error>> {
+fn load_file(path: &Path, ctx: &mut CompileContext) -> Result<(), Box<dyn Error>> {
     let mut parser = LispParser::new(path)?;
     let lm = parser.parse()?;
 
@@ -111,3 +113,16 @@ pub fn load_file(path: &Path, ctx: &mut CompileContext) -> Result<(), Box<dyn Er
     Ok(())
 }
 
+fn compile_ns(ctx: &mut CompileContext) -> Result<(), Box<dyn Error>> {
+    let fns = ctx.form_fn_map.values().cloned().collect_vec();
+
+    for afn in fns.iter() {
+        afn.compile_declare(ctx)?;
+    }
+
+    for afn in fns.iter() {
+        afn.compile_definition(ctx)?;
+    }
+
+    Ok(())
+}

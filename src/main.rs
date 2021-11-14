@@ -30,7 +30,7 @@ fn unique_suffix() -> String {
 }
 
 
-fn handle_main(matches: ArgMatches) -> Result<(), Box<dyn Error>> {
+fn handle_compile(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
     /* Build File && Output */
     let source_file_path = matches.value_of("FILE").unwrap();
 
@@ -156,12 +156,13 @@ fn handle_main(matches: ArgMatches) -> Result<(), Box<dyn Error>> {
 }
 
 
-fn handle_precompile(matches: ArgMatches) -> Result<(), Box<dyn Error>> {
+fn handle_precompile(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
     /* Build Target Type */
     let target_type = TargetType::DyLib;
 
     /* Emit Type */
     let emit_type = if let Some(emit_type) = matches.value_of("emit_type") {
+        dbg!(emit_type);
         match emit_type {
             "obj" => EmitType::Obj,
             "llvm-ir" => EmitType::LLVMIR,
@@ -189,16 +190,14 @@ fn handle_precompile(matches: ArgMatches) -> Result<(), Box<dyn Error>> {
 
     /* Print Type */
     let print_type =
-    if let Some(print_type) = matches.value_of("print_type") {
-        match print_type {
-            "path" => {
-                PrintTy::File(libcore_path())
-            }
-            "stderr" => PrintTy::StdErr,
-            _ => unimplemented!(),
-        }
+    if let Some(path_str) = matches.value_of("output") {
+        PrintTy::File(PathBuf::from(path_str))
     } else {
-        PrintTy::File(libcore_path())
+        match emit_type {
+            EmitType::LLVMIR => PrintTy::StdErr,
+            EmitType::Obj => PrintTy::File(libcore_path()),
+            _ => unimplemented!()
+        }
     };
 
     let compiler_config = CompilerConfig {
@@ -207,7 +206,6 @@ fn handle_precompile(matches: ArgMatches) -> Result<(), Box<dyn Error>> {
         emit_type,
         print_type,
     };
-
 
     let holder = VMCtxHolder::new();
 
@@ -259,19 +257,21 @@ fn main() -> Result<(), Box<dyn Error>> {
         (@subcommand precompile =>
             (about: "compile runtime binary")
             (@arg emit_type: -e --emit +takes_value "[llvm-ir|obj] default: obj")
-            (@arg print_type: -p --print +takes_value "[stderr|path] default: path")
+            (@arg output: -o --output +takes_value "output path")
             (@arg O2: -O "Optimized code")
             (@arg Verbose: -V --verbose +takes_value "verbose level: 0, 1, 2")
         )
 
     ).get_matches();
 
-    let handler = if let Some(_precompile_match) = matches.subcommand_matches("precompile") {
-        handle_precompile
+    if let Some(precompile_match) = matches.subcommand_matches("precompile") {
+        handle_precompile(precompile_match)
+    }
+    else if let Some(compile_match) = matches.subcommand_matches("compile") {
+        handle_compile(compile_match)
     }
     else {
-        handle_main
-    };
+        unimplemented!()
+    }
 
-    handler(matches)
 }

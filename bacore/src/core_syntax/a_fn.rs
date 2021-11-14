@@ -68,7 +68,7 @@ impl<'ctx> AFn {
 
     pub(crate) fn compile_definition(
         &self,
-        ctx: &'ctx mut CompileContext<'ctx>,
+        ctx: &mut CompileContext<'ctx>,
     ) -> Result<(), Box<dyn Error>> {
         let fn_val = ctx.vmmod.get_function(&self.vm_name()).unwrap();
 
