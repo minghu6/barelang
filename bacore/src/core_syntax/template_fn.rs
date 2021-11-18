@@ -17,6 +17,7 @@ use super::{
 ////////////////////////////////////////////////////////////////////////////////
 //// `TemplateFn` Form
 
+#[allow(unused)]
 #[derive(Debug, Clone)]
 pub(crate) struct TemplateFn {
     pub(crate) name: String,
@@ -26,6 +27,7 @@ pub(crate) struct TemplateFn {
     pub(crate) body: ListData,
 }
 
+#[allow(unused)]
 #[derive(Debug, Clone)]
 pub(crate) struct Param {
     pub(crate) formal: String,

@@ -42,6 +42,7 @@ pub enum TemplateTypeAnno {
     Itself(usize, AddrMode),
 }
 
+#[allow(unused)]
 impl TemplateTypeAnno {
     pub fn replace_addr_mode(self, new_addr_mode: AddrMode) -> Self {
         match self {
@@ -62,6 +63,7 @@ pub enum ConcreteTypeAnno {
     Struct(String, AddrMode),
 }
 
+#[allow(unused)]
 impl ConcreteTypeAnno {
     pub fn replace_addr_mode(self, new_addr_mode: AddrMode) -> Self {
         match self {

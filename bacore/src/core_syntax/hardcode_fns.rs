@@ -6,7 +6,7 @@ use crate::*;
 
 
 pub(crate) fn load_primitive_function<'ctx>(
-    ctx: &'ctx mut CompileContext<'ctx>,
+    ctx: &mut CompileContext<'ctx>,
 ) -> Result<(), Box<dyn Error>> {
     /* ADD */
     let fn_val = add_primitive_function!(ctx, "add" [ "usize", "usize" ] -> "usize" | inline);

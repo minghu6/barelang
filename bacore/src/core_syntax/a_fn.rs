@@ -1,17 +1,20 @@
-use std::{error::Error, rc::Rc};
+use std::{error::Error, marker::PhantomData, rc::Rc};
 
 use convert_case::{Case, Casing};
 use indexmap::IndexMap;
 use inkwell::{
+    basic_block::BasicBlock,
+    builder::Builder,
+    context::Context,
     module::Linkage,
     types::{AnyTypeEnum, BasicType, BasicTypeEnum, FunctionType},
+    values::InstructionValue,
 };
 use itertools::Itertools;
 use lisparser::{data::*, pretty_printer::Dump};
 
-use super::{CompileContext, a_value::AValue, form_handel::{handle_norm_form_attr, handle_spl_form_attr}, name_mangling::{concat_overload_name, rename_fn_alias, NameConcatStyle}, type_anno::ConcreteTypeAnno};
-use bacommon::error::*;
-
+use super::{CompileContext, LocalContextType, a_value::AValue, form_compilation::{compile_form, compile_form_attr, compile_norm_form}, name_mangling::{concat_overload_name, rename_fn_alias, NameConcatStyle}, type_anno::ConcreteTypeAnno};
+use bacommon::{error::*, vmbuilder::builder_position_at_before};
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Fn `Form`
@@ -68,14 +71,13 @@ impl<'ctx> AFn {
 
     pub(crate) fn compile_definition(
         &self,
-        ctx: &mut CompileContext<'ctx>,
+        ctx: &'ctx mut CompileContext<'ctx>,
+        _marker: &'ctx PhantomData<&'ctx ()>
     ) -> Result<(), Box<dyn Error>> {
         let fn_val = ctx.vmmod.get_function(&self.vm_name()).unwrap();
 
         /* Codegen Function Body */
         let fn_blk = ctx.vmctx.append_basic_block(fn_val, "");
-        let builder = ctx.vmctx.create_builder();
-        builder.position_at_end(fn_blk);
 
         let binds = self
             .params
@@ -92,9 +94,10 @@ impl<'ctx> AFn {
             })
             .collect();
 
-        let lctx = LocalContext { binds, lctx_type: LocalContextType::FnBody };
+        let lctx =
+            ctx.create_lctx(binds, LocalContextType::FnBody(fn_blk), None);
 
-        // Self::compile_body(ctx, lctx, &self.body)?;
+        let builder = lctx.get_builder(&ctx.vmctx);
 
         match &self.body {
             ListData::Nil(_) => {
@@ -107,27 +110,7 @@ impl<'ctx> AFn {
                 }
             }
             ListData::NonNil(nonnillist) => {
-                let sym: SymData = nonnillist.head.clone().try_into()?;
-                let form_name = rename_fn_alias(&sym.val);
-
-                match form_name.as_str() {
-                    "attr" => {
-                        handle_spl_form_attr(
-                            ctx,
-                            &lctx,
-                            builder,
-                            nonnillist.tail.clone(),
-                        )?;
-                    }
-                    _ => {
-                        handle_norm_form_attr(
-                            ctx,
-                            &lctx,
-                            builder,
-                            nonnillist.tail.clone(),
-                        )?;
-                    }
-                }
+                compile_form(ctx, _marker, lctx, nonnillist.clone())?;
             }
         };
 
@@ -151,26 +134,3 @@ impl AFn {
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-//// Local Context
-
-pub(crate) struct LocalContext<'ctx> {
-    pub(crate) binds: IndexMap<String, AValue<'ctx>>,
-    pub(crate) lctx_type: LocalContextType,
-}
-
-impl<'ctx> LocalContext<'ctx> {
-    /// Create new `FnBody` type Local Context based itself
-    pub(crate) fn fn_body_lctx(&self) -> Self {
-        Self {
-            binds: self.binds.clone(),
-            lctx_type: LocalContextType::FnBody,
-        }
-    }
-}
-
-
-pub(crate) enum LocalContextType {
-    FnBody,
-    LoopBody
-}

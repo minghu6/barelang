@@ -1,3 +1,5 @@
+#![feature(type_alias_impl_trait)]
+
 
 pub use proc_macros::{
     make_simple_error_rules,
@@ -11,4 +13,6 @@ pub mod lexer;
 pub mod runner;
 pub mod target_generator;
 pub mod error;
+pub mod vmbuilder;
 pub mod etc;
+

@@ -16,7 +16,7 @@ use std::error::Error;
 use bacommon::config::CompilerConfig;
 use inkwell::context::Context;
 
-use core_syntax::a_ns::ANS;
+use core_syntax::{a_ns::ANS, hardcode_fns::load_primitive_function};
 use bacommon::env::*;
 
 
@@ -46,7 +46,8 @@ impl<'ctx> VMCtxHolder<'ctx> {
         let core_dir = core_src_dir();
 
         let mut ns: ANS = ANS::init(core_dir.as_path(), &self.vmctx)?;
-        ns.load()?;
+        load_primitive_function(&mut ns.ctx)?;
+        ns.load(&self._marker)?;
 
         Ok(ns)
     }

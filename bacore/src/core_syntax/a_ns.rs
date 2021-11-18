@@ -1,4 +1,4 @@
-use std::{error::Error, path::{Path, PathBuf}};
+use std::{collections::HashSet, error::Error, marker::PhantomData, path::{Path, PathBuf}};
 
 use bacommon::{config::CompilerConfig, target_generator::TargetGenerator};
 use inkwell::context::Context;
@@ -83,12 +83,12 @@ impl<'ctx> ANS<'ctx> {
     }
 
 
-    pub(crate) fn load(&mut self) -> Result<(), Box<dyn Error>> {
+    pub(crate) fn load(&'ctx mut self, _marker: &'ctx PhantomData<&'ctx ()>) -> Result<(), Box<dyn Error>> {
         for sub in self.sub_paths().collect_vec().iter() {
             load_file(&sub, &mut self.ctx)?;
         }
 
-        compile_ns(&mut self.ctx)?;
+        compile_ns(&mut self.ctx, _marker)?;
 
         Ok(())
     }
@@ -113,7 +113,8 @@ fn load_file(path: &Path, ctx: &mut CompileContext) -> Result<(), Box<dyn Error>
     Ok(())
 }
 
-fn compile_ns(ctx: &mut CompileContext) -> Result<(), Box<dyn Error>> {
+fn compile_ns<'ctx>(ctx: &mut CompileContext<'ctx>, _marker: &'ctx PhantomData<&'ctx ()>) -> Result<(), Box<dyn Error>> {
+    // Handle Function
     let fns = ctx.form_fn_map.values().cloned().collect_vec();
 
     for afn in fns.iter() {
@@ -121,7 +122,14 @@ fn compile_ns(ctx: &mut CompileContext) -> Result<(), Box<dyn Error>> {
     }
 
     for afn in fns.iter() {
-        afn.compile_definition(ctx)?;
+        afn.compile_definition(ctx, _marker)?;
+    }
+
+    // Handle Structure
+    let structs = ctx.form_struct_map.values().cloned().collect_vec();
+
+    for astruct in structs.iter() {
+        astruct.do_circular_dependency_check(ctx, &mut HashSet::new())?;
     }
 
     Ok(())
