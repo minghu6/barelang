@@ -8,6 +8,7 @@ pub fn bare_home() -> PathBuf {
     let bare_home_str
     = env::var("BARE_HOME").unwrap_or(".".to_string());
 
+
     fs::canonicalize(Path::new(
         &bare_home_str
     )).unwrap()

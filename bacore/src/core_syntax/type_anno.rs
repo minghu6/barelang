@@ -100,7 +100,7 @@ impl From<&str> for ConcreteTypeAnno {
         };
 
         match input_val {
-            "u64" | "i64" | "u32" | "i32" | "u8" | "float" | "f64" => {
+            "u64" | "i64" | "usize" |"u32" | "i32" | "u8" | "float" | "f64" => {
                 ConcreteTypeAnno::Primitive(input_val.to_owned(), addr_mode)
             }
             _ => ConcreteTypeAnno::Struct(input_val.to_owned(), addr_mode),

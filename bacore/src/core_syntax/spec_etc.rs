@@ -12,19 +12,6 @@ pub(crate) fn is_primitive_type(x: &str) -> bool {
     }
 }
 
-#[inline]
-pub(crate) fn is_struct_type(x: &str, ctx: &CompileContext) -> bool {
-    ctx.form_struct_map.contains_key(x)
-
-}
-
-
-#[inline]
-pub(crate) fn is_template_struct_type(_x: &str, _ctx: &CompileContext) -> bool {
-    // ctx.template_struct_map.contains_key(x)
-
-    true
-}
 
 #[inline]
 pub(crate) fn name_to_filename(name: &str) -> String {

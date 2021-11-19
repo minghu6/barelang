@@ -61,3 +61,28 @@ impl<'ctx> VMCtxHolder<'ctx> {
 }
 
 
+#[cfg(test)]
+mod test {
+    use std::error::Error;
+
+    use bacommon::config::*;
+
+    use crate::VMCtxHolder;
+
+    #[test]
+    fn test_compile_core() -> Result<(), Box<dyn Error>> {
+        let compiler_config = CompilerConfig {
+            optlv: OptLv::Debug,
+            target_type: TargetType::DyLib,
+            emit_type: EmitType::LLVMIR,
+            print_type: PrintTy::StdErr,
+        };
+
+        let holder = VMCtxHolder::new();
+
+        holder.gen_core_lib(&compiler_config)?;
+
+
+        Ok(())
+    }
+}

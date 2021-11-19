@@ -98,7 +98,7 @@ fn parse_concrete_fields(
 }
 
 fn parse_concrete_type_anno_map(
-    ctx: &CompileContext,
+    _ctx: &CompileContext,
     type_anno_map: BraceMapData,
 ) -> Result<ConcreteTypeAnno, Box<dyn Error>> {
     let addr = if let Some(addr_any) = type_anno_map.get_by_keyword(":addr") {
@@ -126,10 +126,6 @@ fn parse_concrete_type_anno_map(
             type_anno_map.get_by_keyword(":type-struct")
         {
             let type_sym: SymData = type_any.try_into()?;
-
-            if !is_struct_type(&type_sym.val, ctx) {
-                return Err(XXXError::new_box_err(&type_sym.val));
-            }
 
             ConcreteTypeAnno::Struct(type_sym.val.to_owned(), addr)
         } else {
@@ -296,10 +292,6 @@ fn parse_type_anno_map(
             type_anno_map.get_by_keyword(":type-struct")
         {
             let type_sym: SymData = type_any.try_into()?;
-
-            // if !is_struct_type(&type_sym.val, ctx) {
-            //     return Err(XXXError::new_box_err(&type_sym.val));
-            // }
 
             if let Some(generic_any) = type_anno_map.get_by_keyword(":generic")
             {

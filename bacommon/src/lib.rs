@@ -14,5 +14,5 @@ pub mod runner;
 pub mod target_generator;
 pub mod error;
 pub mod vmbuilder;
-pub mod etc;
+pub mod etc_utils;
 

@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::rc::Rc;
 
-use bacommon::etc::gen_counter;
+use bacommon::etc_utils::gen_counter;
 use indexmap::IndexMap;
 use m6stack::{stack, Stack};
 

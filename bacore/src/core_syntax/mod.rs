@@ -4,12 +4,12 @@ use std::error::Error;
 use std::ops::Index;
 use std::{collections::VecDeque, rc::Rc};
 
-use bacommon::etc::{gen_counter, CounterType};
+use bacommon::etc_utils::{gen_counter, CounterType};
 use bacommon::vmbuilder::builder_position_at_before;
 use convert_case::{Case, Casing};
 use indexmap::{IndexMap, IndexSet};
 use inkwell::basic_block::BasicBlock;
-use inkwell::values::InstructionValue;
+use inkwell::values::{FunctionValue, InstructionValue};
 use inkwell::{
     builder::Builder,
     context::Context,
@@ -22,6 +22,7 @@ use itertools::{Either, Itertools};
 use lisparser::data::ListData;
 use m6stack::Stack;
 
+use self::a_fn::ConcreteParam;
 use self::a_value::AValue;
 use self::{
     a_fn::AFn,
@@ -37,7 +38,6 @@ pub(crate) mod a_fn;
 pub(crate) mod a_ns;
 pub(crate) mod a_struct;
 pub(crate) mod a_value;
-pub(crate) mod form_compilation;
 pub(crate) mod hardcode_fns;
 pub(crate) mod name_mangling;
 pub(crate) mod spec_etc;
@@ -45,33 +45,7 @@ pub(crate) mod template_fn;
 pub(crate) mod template_struct;
 pub(crate) mod type_anno;
 
-/// Or alias as `Special Form`
-pub(crate) enum CoreSyntax {
-    /* Package Management */
-    NS,
-    InNS,
 
-    /* Basic Struct */
-    TemplateFn,
-    TemplateStruct,
-    Fn,
-    Struct,
-
-    Param,
-    Type,
-}
-
-pub(crate) enum TopLevelSyntax {
-    /* Package Management */
-    NS,
-    InNS,
-
-    /* Basic Struct */
-    TemplateFn,
-    TemplateStruct,
-    Fn,
-    Struct,
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Context (namespace one2one)
@@ -117,15 +91,36 @@ impl<'ctx> CompileContext<'ctx> {
 
     pub(crate) fn fn_top_lctx(
         &mut self,
-        binds: IndexSet<String>,
+        params: &[ConcreteParam],
+        fnval: FunctionValue<'ctx>,
         fnbody: BasicBlock<'ctx>,
     ) -> LocalContext<'ctx> {
-        LocalContext::new(
+        let mut lctx = LocalContext::empty(
             (self.root_lctx_counter)(),
-            binds,
             LocalContextType::FnBody(fnbody),
             None,
-        )
+        );
+
+        let binds: IndexSet<String> = params
+        .iter()
+        .enumerate()
+        .map(|(i, param)| {
+            let complete_name = lctx.complete_prefix() + &param.formal;
+            let avalue = AValue {
+                type_anno: param.type_anno.clone(),
+                vm_val: fnval.get_nth_param(i as u32).unwrap(),
+            };
+
+            self.avalue_map.insert(complete_name, avalue);
+
+            param.formal.clone()
+
+        })
+        .collect();
+
+        lctx.replace_binds(binds);
+
+        lctx
     }
 
     pub(crate) fn mod_name(&self) -> String {
@@ -159,20 +154,20 @@ struct _LocalContext<'ctx> {
 }
 
 impl<'ctx> LocalContext<'ctx> {
-    pub(crate) fn new(
+    pub(crate) fn empty(
         id: usize,
-        binds: IndexSet<String>,
         lctx_type: LocalContextType<'ctx>,
         paren: Option<Self>,
     ) -> Self {
         Self(Rc::new(RefCell::new(_LocalContext {
             id,
-            binds,
+            binds: IndexSet::new(),
             lctx_type,
             paren,
             sub_lctx_counter: gen_counter(),
         })))
     }
+
 
     /// Create new `FnBody` type Local Context based itself
     pub(crate) fn get_builder(&self, vmctx: &'ctx Context) -> Builder<'ctx> {
@@ -193,14 +188,13 @@ impl<'ctx> LocalContext<'ctx> {
         builder
     }
 
-    pub(crate) fn sub(
+    pub(crate) fn sub_empty(
         &mut self,
         binds: IndexSet<String>,
         lctx_type: LocalContextType<'ctx>,
     ) -> Self {
-        Self::new(
+        Self::empty(
             (self.0.as_ref().borrow_mut().sub_lctx_counter)(),
-            binds,
             lctx_type,
             Some(self.clone()),
         )
@@ -232,6 +226,11 @@ impl<'ctx> LocalContext<'ctx> {
         .join("-")
     }
 
+    pub(crate) fn replace_binds(&mut self, new_binds: IndexSet<String>) {
+        self.0.as_ref().borrow_mut().binds = new_binds;
+    }
+
+
     pub(crate) fn get(&self, name: &str) -> Option<String> {
         if self.0.as_ref().borrow().binds.contains(name) {
             Some(self.complete_prefix() + name)
@@ -240,7 +239,10 @@ impl<'ctx> LocalContext<'ctx> {
             None
         }
     }
+
 }
+
+
 
 
 

@@ -1,5 +1,6 @@
 use std::error::Error;
 
+use bacommon::error::UnmatchedGenericNumberError;
 use convert_case::{Case, Casing};
 use inkwell::types::BasicTypeEnum;
 use itertools::Itertools;
@@ -34,6 +35,17 @@ impl<'ctx> TemplateStruct {
         ctx: &mut CompileContext<'ctx>,
         concrete_types: Vec<ConcreteTypeAnno>,
     ) -> Result<AStruct, Box<dyn Error>> {
+        if concrete_types.len() != self.generic_placeholder_num {
+            return Err(UnmatchedGenericNumberError::new_box_err(
+                format!(
+                    "expect: {}, found: {}",
+                    concrete_types.len(),
+                    self.generic_placeholder_num
+                )
+                .as_str(),
+            ));
+        }
+
         let concrete_name = concat_overload_name(
             &self.name,
             &concrete_types,

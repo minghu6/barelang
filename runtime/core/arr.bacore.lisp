@@ -12,15 +12,15 @@
 
 
 ; (template-fn [generic-type+] struct-name [params?] ret [stmt*])
-(def-template-fn index-of [T]
-    [
-     { :type-struct MemBuf :generic [T] } buf
-     { :type-primitive usize } idx
-    ]
-    { :type-template T :generic [T] }
+; (def-template-fn index-of [T]
+;     [
+;      { :type-struct MemBuf :generic [T] } buf
+;      { :type-primitive usize } idx
+;     ]
+;     { :type-template T :generic [T] }
 
-    (deref (+ (attr buf ptr) idx))
-)
+;     (deref (+ (attr buf ptr) idx))
+; )
 
 ;; (template-struct [T] Array
 ;;     [

@@ -1,15 +1,34 @@
-use std::{collections::HashSet, error::Error, marker::PhantomData, path::{Path, PathBuf}, rc::Rc};
-
-use bacommon::{config::CompilerConfig, target_generator::TargetGenerator, vmbuilder::builder_position_at_before};
-use inkwell::{AddressSpace, builder::Builder, context::Context, module::Linkage, types::{BasicType, BasicTypeEnum, FunctionType}, values::FunctionValue};
-use itertools::Itertools;
-use lisparser::{
-    data::*,
-    parser::LispParser,
+use std::{
+    collections::HashSet,
+    error::Error,
+    marker::PhantomData,
+    path::{Path, PathBuf},
+    rc::Rc,
 };
+
+use bacommon::{
+    config::CompilerConfig, target_generator::TargetGenerator,
+    vmbuilder::builder_position_at_before,
+};
+use inkwell::{
+    builder::Builder,
+    context::Context,
+    module::Linkage,
+    types::{BasicType, BasicTypeEnum, FunctionType},
+    values::FunctionValue,
+    AddressSpace,
+};
+use itertools::Itertools;
+use lisparser::{data::*, parser::LispParser};
 use m6stack::AnIteratorWrapper;
 
-use crate::{core_syntax::{name_mangling::{NameConcatStyle, concat_overload_name}, type_anno::{AddrMode, ConcreteTypeAnno}}, parse_phase_2};
+use crate::{
+    core_syntax::{
+        name_mangling::{concat_overload_name, NameConcatStyle},
+        type_anno::{AddrMode, ConcreteTypeAnno},
+    },
+    parse_phase_2,
+};
 
 use super::{
     a_fn::AFn,
@@ -89,9 +108,7 @@ impl<'ctx> ANS<'ctx> {
         AnIteratorWrapper { iter }
     }
 
-    pub(crate) fn load(
-        &mut self,
-    ) -> Result<(), Box<dyn Error>> {
+    pub(crate) fn load(&mut self) -> Result<(), Box<dyn Error>> {
         for sub in self.sub_paths().collect_vec().iter() {
             load_file(&sub, &mut self.ctx)?;
         }
@@ -113,10 +130,7 @@ impl<'ctx> ANS<'ctx> {
     ////////////////////////////////////////////////////////////////////////////////
     //// `Compile`
 
-
-    fn compile_ns(
-        &mut self
-    ) -> Result<(), Box<dyn Error>> {
+    fn compile_ns(&mut self) -> Result<(), Box<dyn Error>> {
         // Handle Function
         let fns = self.ctx.form_fn_map.values().cloned().collect_vec();
 
@@ -132,13 +146,14 @@ impl<'ctx> ANS<'ctx> {
         let structs = self.ctx.form_struct_map.values().cloned().collect_vec();
 
         for astruct in structs.iter() {
-            astruct.do_circular_dependency_check(&self.ctx, &mut HashSet::new())?;
+            astruct.do_circular_dependency_check(
+                &self.ctx,
+                &mut HashSet::new(),
+            )?;
         }
 
         Ok(())
     }
-
-
 
     pub fn compile_struct(
         &mut self,
@@ -148,11 +163,15 @@ impl<'ctx> ANS<'ctx> {
             return Ok(astruct_t.clone().into());
         }
 
-        let mut field_types = vec![];
-
-        for field in astruct.fields.iter() {
-            field_types.push(self.compile_type_anno(&field.type_anno)?)
-        }
+        let field_types =
+        self.compile_type_anno_batch(
+            &astruct
+            .fields
+            .iter()
+            .map(|field| field.type_anno.clone())
+            .collect_vec()
+            [..]
+        )?;
 
         let struct_t = self.ctx.vmctx.struct_type(&field_types[..], false);
 
@@ -162,8 +181,6 @@ impl<'ctx> ANS<'ctx> {
 
         Ok(struct_t.into())
     }
-
-
 
     pub fn compile_type_anno(
         &mut self,
@@ -241,7 +258,6 @@ impl<'ctx> ANS<'ctx> {
         })
     }
 
-
     pub(crate) fn compile_type_anno_batch(
         &mut self,
         types_anno: &[ConcreteTypeAnno],
@@ -259,7 +275,7 @@ impl<'ctx> ANS<'ctx> {
     pub(crate) fn compile_declare(
         &mut self,
         afn: &AFn,
-        linkage: Option<Linkage>
+        linkage: Option<Linkage>,
     ) -> Result<FunctionValue<'ctx>, Box<dyn Error>> {
         if let Some(fn_val) = self.ctx.vmmod.get_function(&afn.vm_name()) {
             return Ok(fn_val);
@@ -294,35 +310,14 @@ impl<'ctx> ANS<'ctx> {
         Ok(fn_val)
     }
 
-
-
     /// Compile Function Definition
     pub(crate) fn compile_definition(
         &mut self,
         afn: &AFn,
     ) -> Result<Option<AValue<'ctx>>, Box<dyn Error>> {
         let fn_val = self.ctx.vmmod.get_function(&afn.vm_name()).unwrap();
-
-        /* Codegen Function Body */
         let fn_blk = self.ctx.vmctx.append_basic_block(fn_val, "");
-
-        let binds = afn
-            .params
-            .iter()
-            .enumerate()
-            .map(|(i, param)| {
-                // AValue {
-                //     type_anno: param.type_anno.clone(),
-                //     vm_val: fn_val.get_nth_param(i as u32).unwrap(),
-                // };
-
-                param.formal.clone()
-
-            })
-            .collect();
-
-        let lctx = self.ctx.fn_top_lctx(binds, fn_blk);
-
+        let lctx = self.ctx.fn_top_lctx(&afn.params[..], fn_val, fn_blk);
         let builder = lctx.get_builder(&self.ctx.vmctx);
 
         let ret = match &afn.body {
@@ -337,7 +332,7 @@ impl<'ctx> ANS<'ctx> {
                 }
             }
             ListData::NonNil(nonnillist) => {
-                self.compile_form(lctx , nonnillist.clone())?
+                self.compile_form(lctx, nonnillist.clone())?
             }
         };
 
@@ -353,25 +348,19 @@ impl<'ctx> ANS<'ctx> {
 
         let form_name = rename_fn_alias(&head_sym.val);
 
-        let ret = match form_name.as_str() {
-            // "attr" => compile_form_attr,
-            _ => self.compile_norm_form(
-                lctx,
-                &form_name,
-                nonnillist.tail.clone(),
-            )?,
+        let dyn_compile = match form_name.as_str() {
+            "attr" => Self::compile_form_attr,
+            _ => Self::compile_norm_form,
         };
 
-        // let ret = dyn_compile(self.c,  lctx, &form_name, nonnillist.tail.clone())?;
+        let ret = dyn_compile(self, lctx, &form_name, nonnillist.tail.clone())?;
 
         Ok(ret)
     }
 
-
-
-    pub(crate) fn type_anno_try_into_form_struct(
+    fn type_anno_try_into_form_struct(
         &self,
-        type_anno: &ConcreteTypeAnno
+        type_anno: &ConcreteTypeAnno,
     ) -> Result<AStruct, Box<dyn Error>> {
         if let ConcreteTypeAnno::Struct(name, addr_mode) = type_anno {
             if let AddrMode::Value = addr_mode {
@@ -384,11 +373,9 @@ impl<'ctx> ANS<'ctx> {
         Err(XXXError::new_box_err(type_anno.to_string().as_str()))
     }
 
-
-
     /// (attr sym sym)
     pub(crate) fn compile_form_attr(
-        &self,
+        &mut self,
         lctx: LocalContext<'ctx>,
         _name: &str,
         tail: Box<ListData>,
@@ -404,7 +391,8 @@ impl<'ctx> ANS<'ctx> {
         let field_name = &field_name_sym.val;
 
         if let Some(avalue) = self.ctx.get_avalue(&lctx, var_name) {
-            let astruct = self.type_anno_try_into_form_struct(&avalue.type_anno)?;
+            let astruct =
+                self.type_anno_try_into_form_struct(&avalue.type_anno)?;
 
             if let Some(field_index) = astruct.index_of_field(field_name) {
                 let vm_val = builder
@@ -440,7 +428,8 @@ impl<'ctx> ANS<'ctx> {
                     PriData::Lit(lit) => match lit {
                         LitData::Int(int) => {
                             let (vm_val, type_anno) = if int.len == 8 {
-                                let vm_val = self.ctx
+                                let vm_val = self
+                                    .ctx
                                     .vmctx
                                     .i64_type()
                                     .const_int(int.val as u64, int.signed)
@@ -456,7 +445,8 @@ impl<'ctx> ANS<'ctx> {
 
                                 (vm_val, type_anno)
                             } else if int.len == 4 {
-                                let vm_val = self.ctx
+                                let vm_val = self
+                                    .ctx
                                     .vmctx
                                     .i64_type()
                                     .const_int(int.val as u64, int.signed)
@@ -471,7 +461,8 @@ impl<'ctx> ANS<'ctx> {
                                 );
                                 (vm_val, type_anno)
                             } else if int.len == 1 {
-                                let vm_val = self.ctx
+                                let vm_val = self
+                                    .ctx
                                     .vmctx
                                     .i64_type()
                                     .const_int(int.val as u64, int.signed)
@@ -492,7 +483,8 @@ impl<'ctx> ANS<'ctx> {
                             AValue { type_anno, vm_val }
                         }
                         LitData::Float(float) => {
-                            let vm_val = self.ctx
+                            let vm_val = self
+                                .ctx
                                 .vmctx
                                 .f64_type()
                                 .const_float(float.val)
@@ -513,10 +505,14 @@ impl<'ctx> ANS<'ctx> {
                         }
                     },
                     PriData::Sym(sym) => {
-                        if let Some(avalue) = self.ctx.get_avalue(&lctx, &sym.val) {
+                        if let Some(avalue) =
+                            self.ctx.get_avalue(&lctx, &sym.val)
+                        {
                             avalue.clone()
                         } else {
-                            return Err(UnknownVarError::new_box_err(&sym.val));
+                            return Err(UnknownVarError::new_box_err(
+                                &sym.val,
+                            ));
                         }
                     }
                     _ => unimplemented!(),
@@ -524,9 +520,8 @@ impl<'ctx> ANS<'ctx> {
                 AnyData::Agg(agg) => match agg {
                     AggData::List(list) => match list {
                         ListData::Nil(_) => None,
-                        ListData::NonNil(nonnillist) => {
-                            self.compile_form(lctx.clone(), nonnillist.clone())?
-                        }
+                        ListData::NonNil(nonnillist) => self
+                            .compile_form(lctx.clone(), nonnillist.clone())?,
                     },
                     _ => unimplemented!(),
                 },
@@ -562,7 +557,8 @@ impl<'ctx> ANS<'ctx> {
             } else if let Some(template_fn) =
                 self.ctx.template_fn_map.get(name).cloned()
             {
-                let afn = template_fn.expand(&mut self.ctx, &concrete_types[..])?;
+                let afn =
+                    template_fn.expand(&mut self.ctx, &concrete_types[..])?;
                 self.compile_declare(&afn, None)?;
                 self.compile_definition(&afn)?;
 
@@ -599,5 +595,3 @@ fn load_file(
 
     Ok(())
 }
-
-

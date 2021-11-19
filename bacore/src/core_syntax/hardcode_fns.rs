@@ -23,8 +23,7 @@ pub(crate) fn load_primitive_function<'ctx>(
     ans: &mut ANS<'ctx>,
 ) -> Result<(), Box<dyn Error>> {
     /* ADD */
-    let fn_val =
-    add_primitive_function!(ans, "add" [ "usize", "usize" ] -> "usize" | inline)?;
+    let fn_val = add_primitive_function!(ans, "add" [ "usize", "usize" ] -> "usize" | inline)?;
 
     let builder = init_fn_definition(ans, fn_val);
     builder.build_int_add(
@@ -32,7 +31,6 @@ pub(crate) fn load_primitive_function<'ctx>(
         fn_val.get_nth_param(1).unwrap().into_int_value(),
         "",
     );
-
 
     let fn_val = add_primitive_function!(ans, "add" [ "u32", "u64" ] -> "u64" | inline)?;
     let builder = init_fn_definition(ans, fn_val);
@@ -59,7 +57,6 @@ pub(crate) fn load_primitive_function<'ctx>(
         .into_float_value();
     builder.build_float_add(arg1st, arg2nd, "");
 
-
     let fn_val = add_primitive_function!(ans, "add" [ "i64", "float" ] -> "float" | inline)?;
     let builder = init_fn_definition(ans, fn_val);
 
@@ -69,7 +66,11 @@ pub(crate) fn load_primitive_function<'ctx>(
             .unwrap()
             .into_int_value()
             .const_cast(ans.ctx.vmctx.i64_type(), true),
-        fn_val.get_nth_param(1).unwrap().into_int_value(),
+        fn_val
+            .get_nth_param(1)
+            .unwrap()
+            .into_float_value()
+            .const_to_signed_int(ans.ctx.vmctx.i64_type()),
         "",
     );
 
@@ -83,28 +84,26 @@ pub(crate) fn load_primitive_function<'ctx>(
         "",
     );
 
-
-
     Ok(())
 }
 
-pub(crate) fn build_fn_type<'ans>(
-    vmctx: &'ans Context,
-    param_types: &[BasicMetadataTypeEnum<'ans>],
-    ret: &str,
-) -> FunctionType<'ans> {
-    match ret {
-        "usize" | "u64" | "i64" => {
-            vmctx.i64_type().fn_type(param_types, false)
-        }
-        "u32" | "i32" => vmctx.i32_type().fn_type(param_types, false),
-        "u8" | "i8" => vmctx.i8_type().fn_type(param_types, false),
-        "bool" => vmctx.bool_type().fn_type(param_types, false),
-        "void" => vmctx.void_type().fn_type(param_types, false),
+// pub(crate) fn build_fn_type<'ans>(
+//     vmctx: &'ans Context,
+//     param_types: &[BasicMetadataTypeEnum<'ans>],
+//     ret: &str,
+// ) -> FunctionType<'ans> {
+//     match ret {
+//         "usize" | "u64" | "i64" => {
+//             vmctx.i64_type().fn_type(param_types, false)
+//         }
+//         "u32" | "i32" => vmctx.i32_type().fn_type(param_types, false),
+//         "u8" | "i8" => vmctx.i8_type().fn_type(param_types, false),
+//         "bool" => vmctx.bool_type().fn_type(param_types, false),
+//         "void" => vmctx.void_type().fn_type(param_types, false),
 
-        _ => unreachable!(ret),
-    }
-}
+//         _ => unreachable!(ret),
+//     }
+// }
 
 #[macro_export]
 macro_rules! add_primitive_function {

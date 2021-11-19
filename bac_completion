@@ -1,0 +1,20 @@
+_bac()
+{
+    local cur
+    COMPREPLY=()
+    #Variable to hold the current word
+    cur="${COMP_WORDS[COMP_CWORD]}"
+
+    #Build a list of our keywords for auto-completion using
+    #the tags file
+    # example $(for t in `cat /home/anadgouda/wiki/tags | \
+    #                  awk '{print $1}'`; do echo ${t}; done)
+
+    local tags="precompile
+                compile"
+
+    #Generate possible matches and store them in the
+    #array variable COMPREPLY
+    COMPREPLY=($(compgen -W "${tags}" $cur))
+}
+complete -F _bac bac
