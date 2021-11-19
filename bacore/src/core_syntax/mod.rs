@@ -1,12 +1,13 @@
-use std::collections::HashSet;
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::ops::Index;
 use std::{collections::VecDeque, rc::Rc};
 
-use bacommon::etc::{CounterType, gen_counter};
+use bacommon::etc::{gen_counter, CounterType};
 use bacommon::vmbuilder::builder_position_at_before;
 use convert_case::{Case, Casing};
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use inkwell::basic_block::BasicBlock;
 use inkwell::values::InstructionValue;
 use inkwell::{
@@ -19,6 +20,7 @@ use inkwell::{
 };
 use itertools::{Either, Itertools};
 use lisparser::data::ListData;
+use m6stack::Stack;
 
 use self::a_value::AValue;
 use self::{
@@ -87,8 +89,9 @@ pub struct CompileContext<'ctx> {
     pub(crate) vmctx: &'ctx Context,
     pub(crate) vmmod: Module<'ctx>,
 
-    _lctx_vec: Vec<LocalContext<'ctx>>,
+    root_lctx_counter: CounterType,
 
+    pub(crate) avalue_map: HashMap<String, AValue<'ctx>>,
 }
 
 impl<'ctx> CompileContext<'ctx> {
@@ -107,69 +110,75 @@ impl<'ctx> CompileContext<'ctx> {
 
             struct_map: IndexMap::new(),
             fn_map: IndexMap::new(),
-            _lctx_vec: Vec::new(),
+            root_lctx_counter: gen_counter(),
+            avalue_map: HashMap::new(),
         }
     }
 
-    pub(crate) fn create_lctx(
+    pub(crate) fn fn_top_lctx(
         &mut self,
-        binds: IndexMap<String, AValue<'ctx>>,
-        lctx_type: LocalContextType<'ctx>,
-        paren: Option<&LocalContext<'ctx>>,
-    ) -> &LocalContext<'ctx> {
-        self._lctx_vec.push(LocalContext::new(binds, lctx_type, paren.cloned()));
-
-        if let Some(lctx) = self._lctx_vec.last() {
-            lctx
-        }
-        else {
-            unreachable!()
-        }
-    }
-
-    pub(crate) fn get_lctx(&self) -> &LocalContext<'ctx> {
-        self._lctx_vec.last().unwrap()
+        binds: IndexSet<String>,
+        fnbody: BasicBlock<'ctx>,
+    ) -> LocalContext<'ctx> {
+        LocalContext::new(
+            (self.root_lctx_counter)(),
+            binds,
+            LocalContextType::FnBody(fnbody),
+            None,
+        )
     }
 
     pub(crate) fn mod_name(&self) -> String {
         self.vmmod.get_name().to_str().unwrap().to_owned()
     }
+
+    pub(crate) fn get_avalue(&self, lctx: &LocalContext, name: &str) -> Option<&AValue<'ctx>> {
+        if let Some(ref complete_name) = lctx.get(name) {
+            Some(self.avalue_map.get(complete_name).unwrap())
+        }
+        else {
+            None
+        }
+    }
+
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Local Context
 
 #[derive(Clone)]
-pub(crate) struct LocalContext<'ctx>(Rc<_LocalContext<'ctx>>);
+pub(crate) struct LocalContext<'ctx>(Rc<RefCell< _LocalContext<'ctx>>>);
 
 struct _LocalContext<'ctx> {
-    pub(crate) binds: IndexMap<String, AValue<'ctx>>,
+    pub(crate) id: usize,
+    pub(crate) binds: IndexSet<String>,
     pub(crate) lctx_type: LocalContextType<'ctx>,
     pub(crate) paren: Option<LocalContext<'ctx>>,
+    sub_lctx_counter: CounterType,
 }
 
 impl<'ctx> LocalContext<'ctx> {
     pub(crate) fn new(
-        binds: IndexMap<String, AValue<'ctx>>,
+        id: usize,
+        binds: IndexSet<String>,
         lctx_type: LocalContextType<'ctx>,
         paren: Option<Self>,
     ) -> Self {
-        Self(Rc::new(_LocalContext {
+        Self(Rc::new(RefCell::new(_LocalContext {
+            id,
             binds,
             lctx_type,
             paren,
-        }))
-    }
-
-    pub(crate) fn lctx_type(&self) -> &LocalContextType<'ctx> {
-        &self.0.lctx_type
+            sub_lctx_counter: gen_counter(),
+        })))
     }
 
     /// Create new `FnBody` type Local Context based itself
     pub(crate) fn get_builder(&self, vmctx: &'ctx Context) -> Builder<'ctx> {
         let mut builder = vmctx.create_builder();
 
-        match self.0.lctx_type {
+        match self.0.as_ref().borrow().lctx_type {
             LocalContextType::FnBody(fnbody) => {
                 builder_position_at_before(&mut builder, fnbody)
             }
@@ -184,10 +193,56 @@ impl<'ctx> LocalContext<'ctx> {
         builder
     }
 
-    pub(crate) fn get(&self, name: &str) -> Option<&AValue> {
-        self.0.binds.get(name)
+    pub(crate) fn sub(
+        &mut self,
+        binds: IndexSet<String>,
+        lctx_type: LocalContextType<'ctx>,
+    ) -> Self {
+        Self::new(
+            (self.0.as_ref().borrow_mut().sub_lctx_counter)(),
+            binds,
+            lctx_type,
+            Some(self.clone()),
+        )
+    }
+
+    pub(crate) fn id(&self) -> String {
+        self.0.as_ref().borrow().id.to_string()
+    }
+
+    pub(crate) fn paren(&self) -> Option<Self> {
+        self.0.as_ref().borrow().paren.clone()
+    }
+
+    pub(crate) fn complete_prefix(&self) -> String {
+        let mut parens_name = vec![self.id()];
+
+        let mut ptr = self.paren();
+
+        while ptr.is_some() {
+            let just_ptr = ptr.unwrap();
+
+            parens_name.push(just_ptr.id());
+            ptr = just_ptr.paren()
+        }
+
+        parens_name
+        .into_iter()
+        .rev()
+        .join("-")
+    }
+
+    pub(crate) fn get(&self, name: &str) -> Option<String> {
+        if self.0.as_ref().borrow().binds.contains(name) {
+            Some(self.complete_prefix() + name)
+        }
+        else {
+            None
+        }
     }
 }
+
+
 
 pub(crate) enum LocalContextType<'ctx> {
     FnBody(BasicBlock<'ctx>),   // FnBlock

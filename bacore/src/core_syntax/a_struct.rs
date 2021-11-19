@@ -22,27 +22,7 @@ pub struct AStruct {
 pub type ConcreteField = ConcreteParam;
 
 impl<'ctx> AStruct {
-    pub fn compile(
-        &self,
-        ctx: &mut CompileContext<'ctx>,
-    ) -> Result<BasicTypeEnum<'ctx>, Box<dyn Error>> {
-        if let Some(astruct_t) = ctx.struct_map.get(&self.name) {
-            return Ok(astruct_t.clone().into());
-        }
 
-        let mut field_types = vec![];
-
-        for field in self.fields.iter() {
-            field_types.push(field.type_anno.compile(ctx)?)
-        }
-
-        let struct_t = ctx.vmctx.struct_type(&field_types[..], false);
-
-        ctx.struct_map
-            .insert(self.name.to_owned(), struct_t.clone());
-
-        Ok(struct_t.into())
-    }
 }
 
 impl ConcreteTypeAnnoGetter for AStruct {

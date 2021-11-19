@@ -15,7 +15,7 @@ use crate::error::*;
 use crate::frontend::datalsp::*;
 use crate::middleware::datair::*;
 use crate::rsclib::search_rs_lib;
-use crate::utils::{gen_counter, CounterType};
+use bacommon::etc::{gen_counter, CounterType};
 
 /// Function Item is regarded as primitives, only allow to defined on Toplevel
 fn collect_fn_item(ml: &ModuleLisp) -> Rc<IndexMap<BaFunKey, SymItem>> {
@@ -697,6 +697,7 @@ pub fn gen_gensym_ser(base: &str, mut counter: CounterType) -> SymGen {
 mod test {
     use std::path::PathBuf;
 
+    use bacommon::etc::gen_counter;
     use bacommon::lexer::SrcFileInfo;
 
     use crate::frontend::lexer::{tokenize, trim_tokens};
@@ -708,7 +709,6 @@ mod test {
     #[test]
     fn test_gensym() {
         use super::{gen_gensym_ser, gensym_rand};
-        use crate::utils::gen_counter;
 
         println!("randsym: {}", gensym_rand());
         println!("randsym: {}", gensym_rand());

@@ -46,8 +46,8 @@ impl<'ctx> VMCtxHolder<'ctx> {
         let core_dir = core_src_dir();
 
         let mut ns: ANS = ANS::init(core_dir.as_path(), &self.vmctx)?;
-        load_primitive_function(&mut ns.ctx)?;
-        ns.load(&self._marker)?;
+        load_primitive_function(&mut ns)?;
+        ns.load()?;
 
         Ok(ns)
     }

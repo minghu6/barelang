@@ -1,89 +1,98 @@
-use inkwell::{context::Context, types::{BasicMetadataTypeEnum, BasicTypeEnum, FunctionType}};
+use inkwell::{
+    builder::Builder,
+    context::Context,
+    types::{BasicMetadataTypeEnum, BasicTypeEnum, FunctionType},
+    values::FunctionValue,
+};
 
 use super::CompileContext;
 use crate::*;
 
+fn init_fn_definition<'ctx>(
+    ans: &mut ANS<'ctx>,
+    fn_val: FunctionValue<'ctx>,
+) -> Builder<'ctx> {
+    let fn_block = ans.ctx.vmctx.append_basic_block(fn_val, "");
+    let builder = ans.ctx.vmctx.create_builder();
+    builder.position_at_end(fn_block);
 
+    builder
+}
 
 pub(crate) fn load_primitive_function<'ctx>(
-    ctx: &mut CompileContext<'ctx>,
+    ans: &mut ANS<'ctx>,
 ) -> Result<(), Box<dyn Error>> {
     /* ADD */
-    let fn_val = add_primitive_function!(ctx, "add" [ "usize", "usize" ] -> "usize" | inline);
-    let fn_block = ctx.vmctx.append_basic_block(fn_val, "");
-    let loc_builder = ctx.vmctx.create_builder();
-    loc_builder.position_at_end(fn_block);
-    loc_builder.build_int_add(
+    let fn_val =
+    add_primitive_function!(ans, "add" [ "usize", "usize" ] -> "usize" | inline)?;
+
+    let builder = init_fn_definition(ans, fn_val);
+    builder.build_int_add(
         fn_val.get_nth_param(0).unwrap().into_int_value(),
         fn_val.get_nth_param(1).unwrap().into_int_value(),
         "",
     );
 
-    let fn_val =
-        add_primitive_function!(ctx, "add" [ "u32", "u64" ] -> "u64" | inline);
-    let fn_block = ctx.vmctx.append_basic_block(fn_val, "");
-    let loc_builder = ctx.vmctx.create_builder();
-    loc_builder.position_at_end(fn_block);
-    loc_builder.build_int_add(
+
+    let fn_val = add_primitive_function!(ans, "add" [ "u32", "u64" ] -> "u64" | inline)?;
+    let builder = init_fn_definition(ans, fn_val);
+    builder.build_int_add(
         fn_val
             .get_nth_param(0)
             .unwrap()
             .into_int_value()
-            .const_cast(ctx.vmctx.i64_type(), true),
+            .const_cast(ans.ctx.vmctx.i64_type(), true),
         fn_val.get_nth_param(1).unwrap().into_int_value(),
         "",
     );
 
-    let fn_val = add_primitive_function!(ctx, "add" [ "float", "i64" ] -> "float" | inline);
-    let fn_block = ctx.vmctx.append_basic_block(fn_val, "");
-    let loc_builder = ctx.vmctx.create_builder();
-    loc_builder.position_at_end(fn_block);
+    let fn_val = add_primitive_function!(ans, "add" [ "float", "i64" ] -> "float" | inline)?;
+    let builder = init_fn_definition(ans, fn_val);
+
     let arg1st = fn_val.get_nth_param(0).unwrap().into_float_value();
-    let arg2nd = loc_builder
+    let arg2nd = builder
         .build_bitcast(
             fn_val.get_nth_param(1).unwrap(),
-            ctx.vmctx.f64_type(),
+            ans.ctx.vmctx.f64_type(),
             "",
         )
         .into_float_value();
-    loc_builder.build_float_add(arg1st, arg2nd, "");
+    builder.build_float_add(arg1st, arg2nd, "");
 
-    let fn_val = add_primitive_function!(ctx, "add" [ "i64", "float" ] -> "float" | inline);
-    let fn_block = ctx.vmctx.append_basic_block(fn_val, "");
-    let loc_builder = ctx.vmctx.create_builder();
-    loc_builder.position_at_end(fn_block);
-    loc_builder.build_int_add(
+
+    let fn_val = add_primitive_function!(ans, "add" [ "i64", "float" ] -> "float" | inline)?;
+    let builder = init_fn_definition(ans, fn_val);
+
+    builder.build_int_add(
         fn_val
             .get_nth_param(0)
             .unwrap()
             .into_int_value()
-            .const_cast(ctx.vmctx.i64_type(), true),
+            .const_cast(ans.ctx.vmctx.i64_type(), true),
         fn_val.get_nth_param(1).unwrap().into_int_value(),
         "",
     );
 
     /* SUB */
-    let fn_val = add_primitive_function!(ctx, "sub" [ "usize", "usize" ] -> "usize" | inline);
-    let fn_block = ctx.vmctx.append_basic_block(fn_val, "");
-    let loc_builder = ctx.vmctx.create_builder();
-    loc_builder.position_at_end(fn_block);
-    loc_builder.build_int_sub(
+    let fn_val = add_primitive_function!(ans, "sub" [ "usize", "usize" ] -> "usize" | inline)?;
+    let builder = init_fn_definition(ans, fn_val);
+
+    builder.build_int_sub(
         fn_val.get_nth_param(0).unwrap().into_int_value(),
         fn_val.get_nth_param(1).unwrap().into_int_value(),
         "",
     );
 
+
+
     Ok(())
 }
 
-
-
-
-pub(crate) fn build_fn_type<'ctx>(
-    vmctx: &'ctx Context,
-    param_types: &[BasicMetadataTypeEnum<'ctx>],
+pub(crate) fn build_fn_type<'ans>(
+    vmctx: &'ans Context,
+    param_types: &[BasicMetadataTypeEnum<'ans>],
     ret: &str,
-) -> FunctionType<'ctx> {
+) -> FunctionType<'ans> {
     match ret {
         "usize" | "u64" | "i64" => {
             vmctx.i64_type().fn_type(param_types, false)
@@ -99,21 +108,17 @@ pub(crate) fn build_fn_type<'ctx>(
 
 #[macro_export]
 macro_rules! add_primitive_function {
-    ($ctx:ident, $base_name:literal [ $($arg:literal),* ] -> $ret:literal | $fn_mode:ident ) => {
+    ($ans:ident, $base_name:literal [ $($arg:literal),* ] -> $ret:literal | $fn_mode:ident ) => {
         {
             use crate::core_syntax::{
                 type_anno::{
-                    compile_concrete_types,
                     ConcreteTypeAnno,
                 },
-                hardcode_fns::build_fn_type,
-                name_mangling:: {
-                    concat_overload_name,
-                    NameConcatStyle
-                }
+                a_fn::{ AFn, ConcreteParam }
             };
             use itertools::Itertools;
             use inkwell::module::Linkage;
+            use lisparser::data::*;
 
             let mut collected_args = Vec::<&str>::new();
 
@@ -121,19 +126,23 @@ macro_rules! add_primitive_function {
                 collected_args.push($arg);
             )*
 
-            let concrete_types = collected_args
+            let params = collected_args
             .into_iter()
             .map_into()
-            .collect::<Vec<ConcreteTypeAnno>>();
+            .collect::<Vec<ConcreteTypeAnno>>()
+            .into_iter()
+            .enumerate()
+            .map(|(i, type_anno)| ConcreteParam { formal: i.to_string(), type_anno })
+            .collect_vec();
 
-            let fn_name = concat_overload_name($base_name, &concrete_types[..], NameConcatStyle::Fn);
+            let ret = Some(ConcreteTypeAnno::from($ret));
 
-            let args_vm_t_vec = compile_concrete_types($ctx, &concrete_types[..])?
-                .into_iter()
-                .map_into()
-                .collect_vec();
-
-            let fn_t = build_fn_type(&$ctx.vmctx, &args_vm_t_vec[..], $ret);
+            let afn = AFn {
+                name: $base_name.to_owned(),
+                params,
+                ret,
+                body: ListData::nil(),
+            };
 
             let linkage = match stringify!($fn_mode) {
                 "inline" => Some(Linkage::LinkOnceODR),
@@ -141,8 +150,7 @@ macro_rules! add_primitive_function {
                 _ => unreachable!(stringify!($fn_mode))
             };
 
-            $ctx.vmmod.add_function(&fn_name, fn_t, linkage)
+            $ans.compile_declare(&afn, linkage)
         }
     };
 }
-
