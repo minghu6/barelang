@@ -11,6 +11,12 @@ pub struct AValue<'ctx> {
     pub vm_val: BasicValueEnum<'ctx>
 }
 
+impl<'ctx> Into<BasicValueEnum<'ctx>> for AValue<'ctx> {
+    fn into(self) -> BasicValueEnum<'ctx> {
+        self.vm_val
+    }
+}
+
 // impl<'ctx> TryFrom<AValue<'ctx>> for StructValue<'ctx> {
 //     type Error = Box<dyn Error>;
 

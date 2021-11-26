@@ -21,9 +21,11 @@ pub struct AStruct {
 
 pub type ConcreteField = ConcreteParam;
 
-impl<'ctx> AStruct {
+// impl<'ctx> AStruct {
+//     pub(crate) fn size(&self, ctx: &CompileContext<'ctx>) -> usize {
 
-}
+//     }
+// }
 
 impl ConcreteTypeAnnoGetter for AStruct {
     fn get_concrete_type_anno(&self) -> ConcreteTypeAnno {
@@ -70,13 +72,13 @@ impl AStruct {
         Ok(())
     }
 
-    pub(crate) fn index_of_field(&self, field_name: &str) -> Option<usize> {
+    pub(crate) fn index_of_field(&self, field_name: &str) -> Option<u32> {
         if let Some((idx, _)) = self
             .fields
             .iter()
             .find_position(|field| field.formal == field_name)
         {
-            Some(idx)
+            Some(idx as u32)
         } else {
             None
         }

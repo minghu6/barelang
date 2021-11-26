@@ -13,7 +13,6 @@ clap = "2.33.3"
 uuid = { version = "0.8", features = ["v4"] }
 # m6stack = "0.1.0"
 m6stack = { git = "https://github.com/minghu6/rust-m6stack", branch = "master" }
-lisparser = { path = "../lisparser" }
 either = "1.6.*"
 
 
@@ -33,6 +32,10 @@ path = "bacore"
 package = "bacommon"
 path = "bacommon"
 
+[dependencies.lisparser]
+package = "lisparser"
+path = "lisparser"
+
 
 [workspace]
-members = ["proc_macros", "lib/rsclib", "bacore", "bacommon"]
+members = ["proc_macros", "lib/rsclib", "bacore", "bacommon", "lisparser"]

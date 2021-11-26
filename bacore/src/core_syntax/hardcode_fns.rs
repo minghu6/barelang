@@ -84,26 +84,31 @@ pub(crate) fn load_primitive_function<'ctx>(
         "",
     );
 
+
+    /* GT */
+    let fn_val = add_primitive_function!(ans, "gt" [ "usize", "usize" ] -> "usize" | inline)?;
+    let builder = init_fn_definition(ans, fn_val);
+    let ret = builder.build_int_compare(
+        inkwell::IntPredicate::UGE,
+        fn_val.get_nth_param(0).unwrap().into_int_value(),
+        fn_val.get_nth_param(1).unwrap().into_int_value(),
+        ""
+    );
+
+    builder.build_return(Some(&ret));
+
+    /* GTE */
+
+
+
+    /* NOT */
+
+
+
     Ok(())
 }
 
-// pub(crate) fn build_fn_type<'ans>(
-//     vmctx: &'ans Context,
-//     param_types: &[BasicMetadataTypeEnum<'ans>],
-//     ret: &str,
-// ) -> FunctionType<'ans> {
-//     match ret {
-//         "usize" | "u64" | "i64" => {
-//             vmctx.i64_type().fn_type(param_types, false)
-//         }
-//         "u32" | "i32" => vmctx.i32_type().fn_type(param_types, false),
-//         "u8" | "i8" => vmctx.i8_type().fn_type(param_types, false),
-//         "bool" => vmctx.bool_type().fn_type(param_types, false),
-//         "void" => vmctx.void_type().fn_type(param_types, false),
 
-//         _ => unreachable!(ret),
-//     }
-// }
 
 #[macro_export]
 macro_rules! add_primitive_function {

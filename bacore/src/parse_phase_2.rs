@@ -7,11 +7,12 @@ use crate::core_syntax::{
     a_fn::{AFn, ConcreteParam},
     a_struct::{AStruct, ConcreteField},
     name_mangling::{concat_overload_name, NameConcatStyle},
-    spec_etc::*,
     template_fn::{Param, TemplateFn},
     template_struct::TemplateStruct,
-    type_anno::{AddrMode, ConcreteTypeAnno, TemplateTypeAnno, TypeAnno},
-    CompileContext,
+    type_anno::{
+        is_primary, AddrMode, ConcreteTypeAnno, TemplateTypeAnno, TypeAnno,
+    },
+    CompileContext, r#const::{KEY_GENERIC, KEY_TYPE_TEMPLATE},
 };
 
 use bacommon::error::*;
@@ -97,7 +98,7 @@ fn parse_concrete_fields(
     parse_concrete_params(ctx, fields_tuple)
 }
 
-fn parse_concrete_type_anno_map(
+pub(crate) fn parse_concrete_type_anno_map(
     _ctx: &CompileContext,
     type_anno_map: BraceMapData,
 ) -> Result<ConcreteTypeAnno, Box<dyn Error>> {
@@ -117,8 +118,10 @@ fn parse_concrete_type_anno_map(
         {
             let type_sym: SymData = type_any.try_into()?;
 
-            if !is_primitive_type(&type_sym.val) {
-                return Err(XXXError::new_box_err(&type_sym.val));
+            if !is_primary(&type_sym.val) {
+                return Err(UnrecognizedPrimaryTypeNameError::new_box_err(
+                    &type_sym.val,
+                ));
             }
 
             ConcreteTypeAnno::Primitive(type_sym.val.clone(), addr)
@@ -133,7 +136,6 @@ fn parse_concrete_type_anno_map(
         },
     )
 }
-
 
 fn parse_defn(
     ctx: &mut CompileContext,
@@ -177,7 +179,6 @@ fn parse_defn(
     Ok(())
 }
 
-
 fn parse_def_template_struct(
     ctx: &mut CompileContext,
     tail: Box<ListData>,
@@ -205,7 +206,7 @@ fn parse_def_template_struct(
     Ok(())
 }
 
-fn parse_generic_name(
+pub fn parse_generic_name(
     generic_tuple: BracketTupleData,
 ) -> Result<Vec<String>, Box<dyn Error>> {
     let mut generic_strs = vec![];
@@ -217,7 +218,6 @@ fn parse_generic_name(
 
     Ok(generic_strs)
 }
-
 
 fn parse_def_template_fn(
     ctx: &mut CompileContext,
@@ -251,7 +251,7 @@ fn parse_def_template_fn(
             params,
             ret,
             body: body_list,
-            generic_placeholder_num: generic_strs.len(),
+            generic_names: generic_strs,
         },
     );
 
@@ -259,6 +259,7 @@ fn parse_def_template_fn(
 }
 
 
+/// TODO: Add nested support for generic
 fn parse_type_anno_map(
     _ctx: &CompileContext,
     type_anno_map: BraceMapData,
@@ -280,8 +281,10 @@ fn parse_type_anno_map(
         {
             let type_sym: SymData = type_any.try_into()?;
 
-            if !is_primitive_type(&type_sym.val) {
-                return Err(XXXError::new_box_err(&type_sym.val));
+            if !is_primary(&type_sym.val) {
+                return Err(UnrecognizedPrimaryTypeNameError::new_box_err(
+                    &type_sym.val,
+                ));
             }
 
             TypeAnno::Concrete(ConcreteTypeAnno::Primitive(
@@ -293,7 +296,7 @@ fn parse_type_anno_map(
         {
             let type_sym: SymData = type_any.try_into()?;
 
-            if let Some(generic_any) = type_anno_map.get_by_keyword(":generic")
+            if let Some(generic_any) = type_anno_map.get_by_keyword(KEY_GENERIC)
             {
                 let generic_tuple: BracketTupleData =
                     generic_any.clone().try_into()?;
@@ -326,7 +329,7 @@ fn parse_type_anno_map(
                 ))
             }
         } else if let Some(type_any) =
-            type_anno_map.get_by_keyword(":type-template")
+            type_anno_map.get_by_keyword(KEY_TYPE_TEMPLATE)
         {
             let type_sym: SymData = type_any.try_into()?;
 
@@ -346,7 +349,7 @@ fn parse_type_anno_map(
     )
 }
 
-fn parse_params(
+pub(crate) fn parse_params(
     ctx: &CompileContext,
     params_tuple: BracketTupleData,
     templates_name: &[String],

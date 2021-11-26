@@ -1,2 +1,2 @@
-(ns core [arr])
+(ns core [arr str])
 

@@ -11,38 +11,80 @@
 )
 
 
-; (template-fn [generic-type+] struct-name [params?] ret [stmt*])
-; (def-template-fn index-of [T]
-;     [
-;      { :type-struct MemBuf :generic [T] } buf
-;      { :type-primitive usize } idx
-;     ]
-;     { :type-template T :generic [T] }
+;; (template-fn [generic-type+] struct-name [params?] ret [stmt*])
+(def-template-fn index-of [T]
+    [
+        { :type-struct MemBuf :generic [T] } buf
+        { :type-primitive usize } idx
+    ]
+    { :type-template T :generic [T] }
 
-;     (deref (+ (attr buf ptr) idx))
-; )
+    (deref (+ (attr buf ptr) idx))
+)
 
-;; (template-struct [T] Array
-;;     [
-;;         ^usize len
-;;         ^{ :type 'MemBuf :generic [T] :addr 'ptr } buf
-;;     ]
-;; )
+(def-template-fn new-membuf [T]
+    [
+        { :type-primitive usize } cap
+    ]
+    { :type-struct MemBuf :generic [T] }
 
-;; (template-fn [T] index-of
-;;     :params [
-;;         (param arr (type 'Array :generic [T]))
-;;         (param idx (type 'usize))
-;;     ]
-;;     :ret T
-;;     :body [
-;;         (index-of (deref-attr arr buf) idx)
-;;     ]
-;; )
+    (template-struct [T]
+        MemBuf cap (malloc T cap)
+    )
+)
 
 
-;; (template-fn [T] deref-attr
-;;     [
-;;         (param S ())
-;;     ]
-;; )
+
+;; RawArr
+(def-template-struct [T] RawArr
+    [
+        { :type-struct MemBuf :generic [T] :addr ptr } buf
+        { :type-primitive usize } len
+    ]
+)
+
+(def-template-fn [T] index-of
+    [
+        { :type-struct RawArr :generic [T] :addr ptr } arr
+        { :type-primitive usize } idx
+    ]
+    { :type-template T :generic [T] }
+
+    (index-of (deref-attr arr buf) idx)
+)
+
+(def-template-fn [T] new-rawarr
+    [
+        { :type-primitive usize } len
+    ]
+    { :type-struct RawArr :generic [T] }
+
+    (template-struct [T]
+        RawArr
+        (malloc T cap)
+        len
+    )
+)
+
+(def-template-fn [T] push
+    [
+        { :type-struct RawArr :generic [T] :addr ptr } arr
+        { :type-template T :generic [T] } elem
+    ]
+
+    (
+        (let [new-len (+ (attr arr len) 1)
+              buf (attr arr buf)
+              cap (deref-attr buf cap)]
+
+            (progn
+                (if (> new-len (deref-attr cap))
+                    (update-attr arr [buf] (realloc buf cap (* cap 2)) )
+                    ()
+                )
+
+                (update-index (attr arr buf) new-len elem)
+            )
+        )
+    )
+)

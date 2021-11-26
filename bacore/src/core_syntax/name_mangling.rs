@@ -2,7 +2,7 @@ use convert_case::{Case, Casing};
 use itertools::Itertools;
 
 use super::type_anno::ConcreteTypeAnno;
-
+use super::r#const::*;
 
 
 
@@ -33,13 +33,15 @@ pub(crate) fn concat_overload_name(
 
 pub(crate) fn rename_fn_alias(name: &str) -> String {
     match name {
-        "+" => "add",
-        "-" => "sub",
-        "*" => "mul",
-        "=" => "eq",
-        "/" => "div",
-        "." => "attr",
-        "->" => "deref-attr",
+        "+" => FORM_ADD,
+        "-" => FORM_SUB,
+        "*" => FORM_MUL,
+        "=" => FORM_EQ,
+        "/" => FORM_DIV,
+        "." => FORM_ATTR,
+        "->" => FORM_DEREF_ATTR,
+        ">" => FORM_GT,
+        ">=" => FORM_GE,
         _ => name
     }.to_owned()
 }

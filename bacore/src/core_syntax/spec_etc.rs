@@ -3,15 +3,6 @@ use std::path::{Path, PathBuf};
 use super::CompileContext;
 
 
-#[inline]
-pub(crate) fn is_primitive_type(x: &str) -> bool {
-    match x {
-        "u8" | "i8" | "u32" | "i32" | "u64" | "usize" | "i64" |
-        "float" | "f64" => true,
-        _ => false
-    }
-}
-
 
 #[inline]
 pub(crate) fn name_to_filename(name: &str) -> String {

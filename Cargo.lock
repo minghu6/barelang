@@ -227,6 +227,9 @@ checksum = "fbe5e23404da5b4f555ef85ebed98fb4083e55a00c317800bc2a50ede9f3d219"
 [[package]]
 name = "lisparser"
 version = "0.1.0"
+dependencies = [
+ "bacommon",
+]
 
 [[package]]
 name = "llvm-sys"

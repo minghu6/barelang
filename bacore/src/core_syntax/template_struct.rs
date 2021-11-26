@@ -14,8 +14,11 @@ use super::{
     type_anno::{
         ConcreteTypeAnno, ConcreteTypeAnnoGetter, TemplateTypeAnno, TypeAnno,
     },
+    r#const::*,
     CompileContext,
 };
+
+
 
 ////////////////////////////////////////////////////////////////////////////////
 //// `TemplateStruct` Form
@@ -33,7 +36,7 @@ impl<'ctx> TemplateStruct {
     pub(crate) fn expand(
         &self,
         ctx: &mut CompileContext<'ctx>,
-        concrete_types: Vec<ConcreteTypeAnno>,
+        concrete_types: &[ConcreteTypeAnno],
     ) -> Result<AStruct, Box<dyn Error>> {
         if concrete_types.len() != self.generic_placeholder_num {
             return Err(UnmatchedGenericNumberError::new_box_err(
@@ -74,10 +77,10 @@ impl<'ctx> TemplateStruct {
                             .into_iter()
                             .cloned()
                             .map(|idx| concrete_types[idx].clone())
-                            .collect();
+                            .collect_vec();
 
                         let field_expanded_struct = field_construction
-                            .expand(ctx, field_construction_types)?;
+                            .expand(ctx, &field_construction_types[..])?;
 
                         field_expanded_struct
                             .get_concrete_type_anno()
