@@ -17,6 +17,14 @@ pub struct LispParserConfig {
     pub tokens_output: Option<PrintTy>
 }
 
+impl LispParserConfig {
+    pub fn print_tok_to_err(mut self) -> Self {
+        self.tokens_output = Some(PrintTy::StdErr);
+
+        self
+    }
+}
+
 
 
 pub struct LispParser {
@@ -128,6 +136,7 @@ impl LispParser {
         let loc = tok1st.loc();
 
         let res = self.parse_list_0(loc);
+
         self.consume_t("<rparen>")?;
 
         res
@@ -734,27 +743,25 @@ impl LispLexer {
         let ty;
         let mut val = String::new();
 
-        let c0 = self.consume1()?;
-
+        let c0 = self.try_peek1()?;
         if c0 == '-' {
-            val.push(c0);
+            val.push(self.consume1()?);
         }
 
-        let c1 = self.consume1()?;
 
+        let c1 = self.try_peek1()?;
         if c1 == '0' {
-            val.push(c1);
+            val.push(self.consume1()?);
+
             let c2_opt = self.peek1();
-
             if let Some(c2) = c2_opt {
-                val.push(self.consume1()?);
-
                 if c2 == 'x' {
-                    // tokenize hex
-                    let c3 = self.consume1()?;
+                    val.push(self.consume1()?);
 
+                    // tokenize hex
+                    let c3 = self.try_peek1()?;
                     if c3.is_ascii_hexdigit() {
-                        val.push(c3);
+                        val.push(self.consume1()?);
                     } else {
                         return Err(TrapCode::UnfinishedToken(
                             self.pos.clone(),
@@ -762,32 +769,31 @@ impl LispLexer {
                         .emit_box_err());
                     }
 
-                    let mut has_dot = false;
                     loop {
                         if let Some(c_nxt) = self.peek1() {
-                            if c_nxt.is_ascii_digit()
-                                || !has_dot && c_nxt == '.'
-                            {
-                                if c_nxt == '.' {
-                                    has_dot = true;
-                                }
-
+                            if c_nxt.is_ascii_digit() {
                                 val.push(self.consume1()?);
-                                continue;
+                            }
+                            else {
+                                break;
                             }
                         }
-
-                        break;
+                        else {
+                            break;
+                        }
                     }
 
                     ty = NumLitTy::HexLit;
                 } else if c2 == '.' {
+                    val.push(self.consume1()?);
                     // tokenzie float
                     loop {
                         if let Some(c_nxt) = self.peek1() {
                             if c_nxt.is_digit(10) {
                                 val.push(self.consume1()?);
-                                continue;
+                            }
+                            else {
+                                break;
                             }
                         }
 
@@ -796,10 +802,8 @@ impl LispLexer {
 
                     ty = NumLitTy::FloatLit;
                 } else {
-                    // dbg!(c0);
-
-                    return Err(TrapCode::UnreconizedToken(self.pos.clone())
-                        .emit_box_err());
+                    // do nothing
+                    ty = NumLitTy::IntLit;
                 }
             } else {
                 ty = NumLitTy::IntLit;
@@ -821,9 +825,9 @@ impl LispLexer {
                 break;
             }
 
-            // eat type annotation suffix: u8 | i8 | u16 | i16 | u32 | i32 | u64 | i64 | u128 | i128
+            // eat type annotation suffix: u8 | i8 | u16 | i16 | u32 | i32 | u64 | i64 | u128 | i128 | f64
             if let Some(c_nxt) = self.peek1() {
-                if c_nxt == 'u' || c_nxt == 'i' {
+                if c_nxt == 'u' || c_nxt == 'i' || c_nxt == 'f' {
                     val.push(self.consume1()?);
 
                     if let Some(c_nxt) = self.peek1() {
@@ -866,7 +870,7 @@ impl LispLexer {
                 }
             }
 
-            ty = if has_dot {
+            ty = if has_dot || val.ends_with("f64") {
                 NumLitTy::FloatLit
             } else {
                 NumLitTy::IntLit
@@ -1096,11 +1100,12 @@ mod test {
 
     #[test]
     fn test_parser() -> Result<(), Box<dyn Error>> {
-        let path = "./examples/arr.core.lisp";
+        // let path = "./examples/arr.core.lisp";
+        let path = "./examples/2.lisp";
 
         let mut parser = LispParser::new(
             Path::new(path),
-            LispParserConfig::default()
+            LispParserConfig::default().print_tok_to_err()
         )?;
         let lispmodule = parser.parse()?;
 

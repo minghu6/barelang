@@ -65,8 +65,8 @@ pub struct CompileContext<'ctx> {
     pub(crate) vmmod: Module<'ctx>,
 
     root_lctx_counter: CounterType,
-
-    pub(crate) avalue_map: HashMap<String, AValue<'ctx>>,
+    avalue_map: HashMap<String, AValue<'ctx>>,
+    pub(crate) entry: Option<ListData>,
 
     pub(crate) current_fn: Option<FunctionValue<'ctx>>,
 }
@@ -92,6 +92,7 @@ impl<'ctx> CompileContext<'ctx> {
             root_lctx_counter: gen_counter(),
             avalue_map: HashMap::new(),
             current_fn: None,
+            entry: None
         }
     }
 
@@ -99,11 +100,10 @@ impl<'ctx> CompileContext<'ctx> {
         &mut self,
         params: &[ConcreteParam],
         fnval: FunctionValue<'ctx>,
-        fnbody: BasicBlock<'ctx>,
     ) -> LocalContext<'ctx> {
         let mut lctx = LocalContext::empty(
             (self.root_lctx_counter)(),
-            LocalContextType::FnBody(fnbody),
+            LocalContextType::FnBody(fnval.get_first_basic_block().unwrap()),
             None,
         );
 

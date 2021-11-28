@@ -51,3 +51,4 @@ pub fn print_obj<'ctx>(module: &Module<'ctx>, optlv: OptimizationLevel) -> Resul
 
     Ok(())
 }
+

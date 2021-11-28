@@ -7,7 +7,8 @@ use std::{
 };
 
 use bacommon::{
-    config::{CompilerConfig, PrintTy}, target_generator::TargetGenerator,
+    config::{CompilerConfig, PrintTy},
+    target_generator::TargetGenerator,
     vmbuilder::builder_position_at_before,
 };
 use inkwell::{
@@ -19,7 +20,11 @@ use inkwell::{
     AddressSpace,
 };
 use itertools::Itertools;
-use lisparser::{data::*, parser::{LispParser, LispParserConfig}, *};
+use lisparser::{
+    data::*,
+    parser::{LispParser, LispParserConfig},
+    *,
+};
 use m6stack::AnIteratorWrapper;
 
 use crate::{
@@ -34,6 +39,7 @@ use super::{
     a_fn::AFn,
     a_struct::AStruct,
     a_value::AValue,
+    hardcode_fns::init_fn_definition,
     name_mangling::rename_fn_alias,
     r#const::*,
     spec_etc::{extract_index_path_from_dir, name_to_path},
@@ -92,7 +98,8 @@ impl<'ctx> ANS<'ctx> {
         let ctx = CompileContext::new(dirname, vmctx);
         let index_path = extract_index_path_from_dir(dir);
 
-        let mut parser = LispParser::new(&index_path, LispParserConfig::default())?;
+        let mut parser =
+            LispParser::new(&index_path, LispParserConfig::default())?;
         let lm = parser.parse()?;
 
         let list1st: NonNilListData = lm.lists[0].clone().try_into()?;
@@ -183,6 +190,11 @@ impl<'ctx> ANS<'ctx> {
                 &self.ctx,
                 &mut HashSet::new(),
             )?;
+        }
+
+        // Handle Entry
+        if let Some(main_body) = self.ctx.entry.clone() {
+            self.compile_entry(&main_body)?;
         }
 
         Ok(())
@@ -386,13 +398,59 @@ impl<'ctx> ANS<'ctx> {
     }
 
     /// Compile Function Definition
+    pub(crate) fn compile_entry(
+        &mut self,
+        body: &ListData,
+    ) -> Result<(), Box<dyn Error>> {
+        let i32_t = self.ctx.vmctx.i32_type();
+        let const_char_ptr_t =
+            self.ctx.vmctx.i8_type().ptr_type(AddressSpace::Const);
+        let cosnt_const_char_ptr_ptr_t =
+            const_char_ptr_t.ptr_type(AddressSpace::Const);
+
+        let fn_main_t = i32_t.fn_type(
+            &[
+                i32_t.into(),                      // argc
+                cosnt_const_char_ptr_ptr_t.into(), // argv
+                cosnt_const_char_ptr_ptr_t.into(), // envp
+            ],
+            false,
+        );
+        let fn_main = self.ctx.vmmod.add_function("main", fn_main_t, None);
+
+        let builder = init_fn_definition(self, fn_main);
+
+        match body {
+            ListData::Nil(_) => {
+                builder.build_return(Some(&i32_t.const_zero()));
+            }
+            ListData::NonNil(nonnillist) => {
+                // TODO: handle argc/argv/envp
+                let lctx = self.ctx.fn_top_lctx(&[], fn_main);
+                let ret_form = self.eval_form(
+                    lctx,
+                    nonnillist.clone(),
+                )?;
+
+                match ret_form.avalue_opt {
+                    Some(avalue) => {
+                        builder.build_return(Some(&avalue.vm_val))
+                    },
+                    None => builder.build_return(Some(&i32_t.const_zero())),
+                };
+            }
+        };
+
+        Ok(())
+    }
+
+    /// Compile Function Definition
     pub(crate) fn compile_definition(
         &mut self,
         afn: &AFn,
     ) -> Result<Option<AValue<'ctx>>, Box<dyn Error>> {
         let fn_val = self.ctx.vmmod.get_function(&afn.vm_name()).unwrap();
-        let fn_blk = self.ctx.vmctx.append_basic_block(fn_val, "");
-        let lctx = self.ctx.fn_top_lctx(&afn.params[..], fn_val, fn_blk);
+        let lctx = self.ctx.fn_top_lctx(&afn.params[..], fn_val);
         let builder = lctx.get_builder(&self.ctx.vmctx);
 
         let ret = match &afn.body {
@@ -672,7 +730,8 @@ impl<'ctx> ANS<'ctx> {
                     )
                     .unwrap();
 
-                let type_anno = astruct.fields[field_index as usize].type_anno.clone();
+                let type_anno =
+                    astruct.fields[field_index as usize].type_anno.clone();
 
                 Ok(FormValue::new(builder, Some(AValue { type_anno, vm_val })))
             } else {
@@ -1098,24 +1157,23 @@ impl<'ctx> ANS<'ctx> {
         should_be_3clause(FORM_REALLOC, &args_vec[..])?;
 
         let old_ptr_avalue = should_be_ptr(FORM_REALLOC, &args_vec[..], 0)?;
-        let vm_t = self.compile_type_anno(&old_ptr_avalue.type_anno.get_val_type())?;
+        let vm_t =
+            self.compile_type_anno(&old_ptr_avalue.type_anno.get_val_type())?;
         let old_ptr = old_ptr_avalue.vm_val.into_pointer_value();
 
-        let old_size = should_be_unsigned_int(FORM_REALLOC, &args_vec[..], 1)?.vm_val.into_int_value();
-        let new_size = should_be_unsigned_int(FORM_REALLOC, &args_vec[..], 2)?.vm_val.into_int_value();
+        let old_size = should_be_unsigned_int(FORM_REALLOC, &args_vec[..], 1)?
+            .vm_val
+            .into_int_value();
+        let new_size = should_be_unsigned_int(FORM_REALLOC, &args_vec[..], 2)?
+            .vm_val
+            .into_int_value();
 
-
-        let new_ptr = builder.build_array_malloc(
-            vm_t,
-            new_size,
-             ""
-        )?;
+        let new_ptr = builder.build_array_malloc(vm_t, new_size, "")?;
 
         builder.build_memmove(new_ptr, 16, old_ptr, 16, old_size)?;
 
         // Assume that malloc/realloc operate on Unique<Ptr>
         builder.build_free(old_ptr);
-
 
         Ok(FormValue::new(
             builder,
@@ -1125,7 +1183,6 @@ impl<'ctx> ANS<'ctx> {
             }),
         ))
     }
-
 
     /// (update-attr ptr [attr1 attr1-attr2 attr1-attr2-attr3] value)
     pub(crate) fn eval_form_update_attr(
@@ -1138,7 +1195,8 @@ impl<'ctx> ANS<'ctx> {
         let tail: NonNilListData = tail.try_into()?;
 
         let struct_ptr_any = tail.head.clone();
-        let struct_ptr_avalue: AValue<'ctx> = self.eval_any(lctx.clone(), struct_ptr_any)?.try_into()?;
+        let struct_ptr_avalue: AValue<'ctx> =
+            self.eval_any(lctx.clone(), struct_ptr_any)?.try_into()?;
 
         let tail: NonNilListData = tail.tail.try_into()?;
         let ordered_attrs_tuple: BracketTupleData = tail.head.try_into()?;
@@ -1151,15 +1209,18 @@ impl<'ctx> ANS<'ctx> {
 
         let tail: NonNilListData = tail.tail.try_into()?;
         let elem_any = tail.head;
-        let elem_avalue: AValue<'ctx> = self.eval_any(lctx.clone(), elem_any)?.try_into()?;
-
+        let elem_avalue: AValue<'ctx> =
+            self.eval_any(lctx.clone(), elem_any)?.try_into()?;
 
         // find final ptr
-        let (mut ptr, mut type_anno) =
-            (struct_ptr_avalue.vm_val.into_pointer_value(), struct_ptr_avalue.type_anno);
+        let (mut ptr, mut type_anno) = (
+            struct_ptr_avalue.vm_val.into_pointer_value(),
+            struct_ptr_avalue.type_anno,
+        );
 
         for attr_name in ordered_attrs_name.into_iter() {
-            let astruct = self.ctx.form_struct_map.get(type_anno.type_name()).unwrap();
+            let astruct =
+                self.ctx.form_struct_map.get(type_anno.type_name()).unwrap();
             let field_idx = astruct.index_of_field(&attr_name).unwrap();
 
             ptr = builder.build_struct_gep(ptr, field_idx, "").unwrap();
@@ -1170,11 +1231,9 @@ impl<'ctx> ANS<'ctx> {
 
         Ok(FormValue {
             builder,
-            avalue_opt: None
+            avalue_opt: None,
         })
     }
-
-
 
     /// (update-index ptr [idx-1 idx1-idx2 idx1-idx2-idx3] value)
     pub(crate) fn eval_form_update_index(
@@ -1187,21 +1246,23 @@ impl<'ctx> ANS<'ctx> {
         let tail: NonNilListData = tail.try_into()?;
 
         let struct_ptr_any = tail.head.clone();
-        let struct_ptr_avalue: AValue<'ctx> = self.eval_any(lctx.clone(), struct_ptr_any)?.try_into()?;
+        let struct_ptr_avalue: AValue<'ctx> =
+            self.eval_any(lctx.clone(), struct_ptr_any)?.try_into()?;
 
         let tail: NonNilListData = tail.tail.try_into()?;
         let ordered_idxs_tuple: BracketTupleData = tail.head.try_into()?;
 
         let mut ordered_indexes: Vec<IntValue<'ctx>> = vec![];
         for idx_any in ordered_idxs_tuple.items.into_iter() {
-            let idx_avalue: AValue<'ctx> = self.eval_any(lctx.clone(), box idx_any)?.try_into()?;
+            let idx_avalue: AValue<'ctx> =
+                self.eval_any(lctx.clone(), box idx_any)?.try_into()?;
             ordered_indexes.push(idx_avalue.vm_val.into_int_value());
         }
 
         let tail: NonNilListData = tail.tail.try_into()?;
         let elem_any = tail.head;
-        let elem_avalue: AValue<'ctx> = self.eval_any(lctx.clone(), elem_any)?.try_into()?;
-
+        let elem_avalue: AValue<'ctx> =
+            self.eval_any(lctx.clone(), elem_any)?.try_into()?;
 
         // find final ptr
         let mut ptr = struct_ptr_avalue.vm_val.into_pointer_value();
@@ -1213,7 +1274,7 @@ impl<'ctx> ANS<'ctx> {
 
         Ok(FormValue {
             builder,
-            avalue_opt: None
+            avalue_opt: None,
         })
     }
 
@@ -1595,10 +1656,10 @@ fn load_file(
     path: &Path,
     ctx: &mut CompileContext,
 ) -> Result<(), Box<dyn Error>> {
-    // let config = LispParserConfig::default();
-    let config = LispParserConfig {
-        tokens_output: Some(PrintTy::StdErr),
-    };
+    let config = LispParserConfig::default();
+    // let config = LispParserConfig {
+    //     tokens_output: Some(PrintTy::StdErr),
+    // };
 
     let mut parser = LispParser::new(path, config)?;
     let lm = parser.parse()?;

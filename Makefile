@@ -10,7 +10,7 @@ getbac: build copybin
 
 genlib:
 	@ cargo build -p rsc --release
-	@ cp ./target/release/librsc.so .
+	@ cp ./target/release/librsc.so ./runtime/
 
 testexp0: build copybin
 	@ ./${BARE_COMPILER} ./examples/exp0.ba

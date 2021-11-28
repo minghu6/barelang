@@ -61,6 +61,8 @@ fn rsclib_codegen() -> Result<(), Box<dyn Error>> {
     let i8ptr_t = i8_t.ptr_type(AddressSpace::Generic);
     let void_type = context.void_type();
     let i32_t = context.i32_type();
+    let i32ptr_t = i32_t.ptr_type(AddressSpace::Generic);
+    let f64_t = context.f64_type();
 
     /* Create Main Function */
     let fn_main_t = i64_type.fn_type(&[], false);
@@ -69,6 +71,29 @@ fn rsclib_codegen() -> Result<(), Box<dyn Error>> {
     builder.position_at_end(blk_main);
 
     /* Extern Function */
+    /* C printf */
+    let fn_cprintf_t = i32ptr_t.fn_type(&[i8ptr_t.into()], true);
+    let fn_cprintf = module.add_function("printf", fn_cprintf_t, Some(Linkage::External));
+
+    let ctx_s = context.const_string("printf: p-int: %d, p-float: %f, p-s: %s\n".as_bytes(), true);
+    let ctrl_s_ptr = builder.build_alloca(ctx_s.get_type(), "");
+    builder.build_store(ctrl_s_ptr, ctx_s);
+
+    let s1 = context.const_string("this is tail string".as_bytes(), true);
+    let s1_ptr = builder.build_alloca(s1.get_type(), "");
+    builder.build_store(s1_ptr, s1);
+
+    builder.build_call(
+        fn_cprintf,
+        &[
+                ctrl_s_ptr.into(),
+                i32_t.const_int(12345, true).into(),
+                f64_t.const_float(123.45).into(),
+                s1_ptr.into()
+            ],
+        ""
+    );
+
 
     /* prints */
     let s0 = "hello, barelang";
@@ -183,4 +208,5 @@ fn test_rsclib() -> Result<(), Box<dyn Error>> {
     link_default(&output)?;
 
     run_bin(&output)
+    // Ok(())
 }

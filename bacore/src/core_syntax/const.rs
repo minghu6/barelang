@@ -24,6 +24,8 @@ pub const CONST_STR: &str = "conststr";
 pub const KEY_TYPE_PRIMITIVE: &str = ":type-primitive";
 pub const KEY_TYPE_STRUCT: &str = ":type-struct";
 pub const KEY_TYPE_TEMPLATE: &str = ":type-template";
+// pub const KEY_TYPE_NONE: &str = ":type-none";
+
 pub const KEY_ADDR: &str = ":addr";
 pub const KEY_GENERIC: &str = ":generic";
 

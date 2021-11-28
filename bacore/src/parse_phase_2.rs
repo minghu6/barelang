@@ -31,6 +31,7 @@ pub(crate) fn parse(
 
             let dyn_parse = match sym_data.val.as_str() {
                 "defn" => parse_defn,
+                "def-main" => parse_def_main,
                 "def-struct" => parse_def_struct,
                 "def-template-fn" => parse_def_template_fn,
                 "def-template-struct" => parse_def_template_struct,
@@ -90,6 +91,7 @@ fn parse_concrete_params(
     Ok(params)
 }
 
+
 #[inline]
 fn parse_concrete_fields(
     ctx: &CompileContext,
@@ -97,6 +99,7 @@ fn parse_concrete_fields(
 ) -> Result<Vec<ConcreteField>, Box<dyn Error>> {
     parse_concrete_params(ctx, fields_tuple)
 }
+
 
 pub(crate) fn parse_concrete_type_anno_map(
     _ctx: &CompileContext,
@@ -136,6 +139,7 @@ pub(crate) fn parse_concrete_type_anno_map(
         },
     )
 }
+
 
 fn parse_defn(
     ctx: &mut CompileContext,
@@ -179,17 +183,30 @@ fn parse_defn(
     Ok(())
 }
 
+fn parse_def_main(
+    ctx: &mut CompileContext,
+    tail: Box<ListData>,
+) -> Result<(), Box<dyn Error>> {
+    let any_data_vec = (*tail).flatten();
+
+    let body_list: ListData = any_data_vec[0].try_into()?;
+
+    ctx.entry = Some(body_list);
+
+    Ok(())
+}
+
 fn parse_def_template_struct(
     ctx: &mut CompileContext,
     tail: Box<ListData>,
 ) -> Result<(), Box<dyn Error>> {
     let any_data_vec = (*tail).flatten();
 
-    let name_sym: SymData = any_data_vec[0].try_into()?;
-    let name = name_sym.val.to_owned();
-
-    let generic_tuple: BracketTupleData = any_data_vec[1].try_into()?;
+    let generic_tuple: BracketTupleData = any_data_vec[0].try_into()?;
     let generic_strs = parse_generic_name(generic_tuple)?;
+
+    let name_sym: SymData = any_data_vec[1].try_into()?;
+    let name = name_sym.val.to_owned();
 
     let fields_tuple: BracketTupleData = any_data_vec[2].try_into()?;
     let fields = parse_fields(ctx, fields_tuple, &generic_strs[..])?;
@@ -225,22 +242,19 @@ fn parse_def_template_fn(
 ) -> Result<(), Box<dyn Error>> {
     let mut any_data_iter = (*tail).flatten().into_iter();
 
-    let name_sym: SymData = any_data_iter.next().unwrap().try_into()?;
-    let name = name_sym.val.to_owned();
-
     let generic_tuple: BracketTupleData =
         any_data_iter.next().unwrap().try_into()?;
     let generic_strs = parse_generic_name(generic_tuple)?;
+
+    let name_sym: SymData = any_data_iter.next().unwrap().try_into()?;
+    let name = name_sym.val.to_owned();
 
     let params_tuple: BracketTupleData =
         any_data_iter.next().unwrap().try_into()?;
     let params = parse_params(ctx, params_tuple, &generic_strs[..])?;
 
-    let ret = if let Ok(ret_map) = any_data_iter.next().unwrap().try_into() {
-        Some(parse_type_anno_map(ctx, ret_map, &generic_strs[..])?)
-    } else {
-        None
-    };
+    let ret_map: BraceMapData = any_data_iter.next().unwrap().try_into()?;
+    let ret = parse_type_anno_map(ctx, ret_map, &generic_strs[..])?;
 
     let body_list: ListData = any_data_iter.next().unwrap().try_into()?;
 
@@ -264,7 +278,7 @@ fn parse_type_anno_map(
     _ctx: &CompileContext,
     type_anno_map: BraceMapData,
     templates_name: &[String],
-) -> Result<TypeAnno, Box<dyn Error>> {
+) -> Result<Option<TypeAnno>, Box<dyn Error>> {
     let addr = if let Some(addr_any) = type_anno_map.get_by_keyword(":addr") {
         let addr_any: SymData = addr_any.try_into()?;
 
@@ -276,7 +290,7 @@ fn parse_type_anno_map(
         AddrMode::Value
     };
 
-    Ok(
+    Ok(Some(
         if let Some(type_any) = type_anno_map.get_by_keyword(":type-primitive")
         {
             let type_sym: SymData = type_any.try_into()?;
@@ -344,9 +358,9 @@ fn parse_type_anno_map(
                 ));
             }
         } else {
-            unreachable!("{:#?}", type_anno_map)
+            return Ok(None)
         },
-    )
+    ))
 }
 
 pub(crate) fn parse_params(
@@ -361,7 +375,7 @@ pub(crate) fn parse_params(
             param_tuple.next().unwrap().try_into()?;
 
         let type_anno =
-            parse_type_anno_map(ctx, type_anno_map, templates_name)?;
+            parse_type_anno_map(ctx, type_anno_map, templates_name)?.unwrap();
 
         let formal_sym: SymData = param_tuple
             .next()

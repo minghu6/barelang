@@ -26,3 +26,5 @@ make_simple_error_rules!(UnsupportedFloatMathOpError);
 make_simple_error_rules!(UnsupportedNumberMathOpError);
 make_simple_error_rules!(UnsupportedOpTypeError);
 
+
+make_simple_error_rules!(UnknownFileExtNameError);

@@ -28,14 +28,16 @@ pub use proc_macros::{
 
 pub struct VMCtxHolder<'ctx> {
     vmctx: Context,
+    config: CompilerConfig,
     _marker: PhantomData<&'ctx ()>
 }
 
 
 impl<'ctx> VMCtxHolder<'ctx> {
-    pub fn new() -> Self {
+    pub fn new(config: CompilerConfig) -> Self {
         VMCtxHolder {
             vmctx: Context::create(),
+            config,
             _marker: PhantomData
         }
     }
@@ -52,10 +54,16 @@ impl<'ctx> VMCtxHolder<'ctx> {
         Ok(ns)
     }
 
-    pub fn gen_core_lib(&self, config: &CompilerConfig) -> Result<(), Box<dyn Error>> {
+    pub fn load_mod(&self, ) -> Result<ANS<'ctx>, Box<dyn Error>> {
+
+
+        todo!()
+    }
+
+    pub fn gen_core_lib(&self) -> Result<(), Box<dyn Error>> {
         let ns = self.load_core()?;
 
-        ns.print(config)
+        ns.print(&self.config)
     }
 
 }
@@ -78,11 +86,9 @@ mod test {
             print_type: PrintTy::StdErr,
         };
 
-        let holder = VMCtxHolder::new();
+        let holder = VMCtxHolder::new(compiler_config);
 
-        holder.gen_core_lib(&compiler_config)?;
-
-
+        todo!();
         Ok(())
     }
 }

@@ -15,4 +15,5 @@ pub mod target_generator;
 pub mod error;
 pub mod vmbuilder;
 pub mod etc_utils;
+pub mod r#const;
 

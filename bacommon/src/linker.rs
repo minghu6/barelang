@@ -1,6 +1,7 @@
+#![allow(unused_imports)]
 use std::{error::Error, process::{Command, Stdio}};
 
-use crate::{env::{bare_home, librsc_path}, runner::RunningError};
+use crate::{env::{ librsc_path, runtime_dir}, runner::RunningError};
 
 
 
@@ -22,9 +23,9 @@ pub fn link(output: &str, input_list: &[&str]) -> Result<(), Box<dyn Error>> {
     let mut link_proc = Command::new("gcc")
     .args(input_list)
     .arg(librsc_path().to_str().unwrap())
-    .arg("-Xlinker")
-    .arg("-rpath")
-    .arg(bare_home().as_os_str().to_str().unwrap())
+    // .arg("-Xlinker")
+    // .arg("-rpath")
+    // .arg(runtime_dir())
     .arg("-o")
     .arg(output)
     .stdin(Stdio::null())

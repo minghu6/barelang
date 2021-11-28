@@ -3,7 +3,7 @@
 
 
 ; (template-struct [generic-type+] struct-name [params?])
-(def-template-struct MemBuf [T]
+(def-template-struct [T] MemBuf
     [
         { :type-primitive usize } cap  ; ^{ :type-primitive 'usize }
         { :type-template T :addr ptr :generic [T] } ptr
@@ -12,7 +12,7 @@
 
 
 ;; (template-fn [generic-type+] struct-name [params?] ret [stmt*])
-(def-template-fn index-of [T]
+(def-template-fn [T] index-of
     [
         { :type-struct MemBuf :generic [T] } buf
         { :type-primitive usize } idx
@@ -22,7 +22,7 @@
     (deref (+ (attr buf ptr) idx))
 )
 
-(def-template-fn new-membuf [T]
+(def-template-fn [T] new-membuf
     [
         { :type-primitive usize } cap
     ]
@@ -71,6 +71,7 @@
         { :type-struct RawArr :generic [T] :addr ptr } arr
         { :type-template T :generic [T] } elem
     ]
+    {}
 
     (
         (let [new-len (+ (attr arr len) 1)

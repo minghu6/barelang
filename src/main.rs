@@ -1,6 +1,6 @@
 use std::error::Error;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use bac::middleware::ml_simplifier::MLSimplifier;
@@ -8,9 +8,11 @@ use bacommon::config::{
     CompilerConfig, EmitType, OptLv, PrintTy, TargetType, VerboseLv,
 };
 use bacommon::env::libcore_path;
-use bacommon::error::XXXError;
+use bacommon::error::*;
 use bacommon::lexer::SrcFileInfo;
 use bacommon::linker::link;
+use bacommon::r#const::*;
+
 use bacore::VMCtxHolder;
 use clap::clap_app;
 use clap::{ArgMatches};
@@ -28,6 +30,34 @@ fn unique_suffix() -> String {
         .as_millis()
         .to_string()
 }
+
+
+pub enum SrcType {
+    BareLang,
+    BaCore,
+}
+
+impl SrcType {
+    pub fn try_new(path: &Path) -> Result<Self, Box<dyn Error>> {
+        let filename_s = path.file_name().unwrap().to_str().unwrap();
+
+        Ok(
+            if filename_s.ends_with(EXT_BARE_CORE)
+                && filename_s.len() > EXT_BARE_CORE.len()
+            {
+                Self::BaCore
+            } else if filename_s.ends_with(EXT_BARE_LANG)
+                && filename_s.len() > EXT_BARE_LANG.len()
+            {
+                Self::BareLang
+            } else {
+                return Err(UnknownFileExtNameError::new_box_err(filename_s));
+            }
+        )
+    }
+}
+
+
 
 
 fn handle_compile(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
@@ -111,7 +141,7 @@ fn handle_compile(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
                 return Ok(());
             }
 
-            compile(&compiler_config, file)?;
+            compile(compiler_config, file)?;
         }
         EmitType::Obj => {
             match target_type {
@@ -135,7 +165,7 @@ fn handle_compile(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
                         return Ok(());
                     }
 
-                    compile(&compiler_config, file)?;
+                    compile(compiler_config, file)?;
 
                     let output = match matches.value_of("output") {
                         Some(output) => output,
@@ -151,6 +181,8 @@ fn handle_compile(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
         }
         EmitType::Asm => todo!(),
     }
+
+
 
     Ok(())
 }
@@ -207,15 +239,34 @@ fn handle_precompile(matches: &ArgMatches) -> Result<(), Box<dyn Error>> {
         print_type,
     };
 
-    let holder = VMCtxHolder::new();
+    let holder = VMCtxHolder::new(compiler_config);
 
-    holder.gen_core_lib(&compiler_config)
+    holder.gen_core_lib()
 
 }
 
 
 /// Compile source code string
-pub fn compile(config: &CompilerConfig, file: SrcFileInfo) -> Result<(), Box<dyn Error>> {
+fn compile(config: CompilerConfig, file: SrcFileInfo) -> Result<(), Box<dyn Error>> {
+    let dyn_compile = match SrcType::try_new(file.get_path())? {
+        SrcType::BareLang => compile_barelang,
+        SrcType::BaCore => compile_bacore,
+    };
+
+    dyn_compile(config, file)
+}
+
+fn compile_bacore(config: CompilerConfig, file: SrcFileInfo)  -> Result<(), Box<dyn Error>> {
+
+    let holder = VMCtxHolder::new(config);
+
+
+
+    Ok(())
+}
+
+
+fn compile_barelang(config: CompilerConfig, file: SrcFileInfo)  -> Result<(), Box<dyn Error>> {
     let tokens = tokenize(&file);
     let tokens = tokens
         .into_iter()
@@ -237,6 +288,7 @@ pub fn compile(config: &CompilerConfig, file: SrcFileInfo) -> Result<(), Box<dyn
 
     codegen(&config, file, bin)
 }
+
 
 fn main() -> Result<(), Box<dyn Error>> {
     let matches = clap_app!(bac =>

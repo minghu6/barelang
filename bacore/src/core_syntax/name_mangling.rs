@@ -27,7 +27,7 @@ pub(crate) fn concat_overload_name(
             .join(""),
     };
 
-    name.to_owned() + "@" + &overload_postfix
+    name.to_owned() + "_" + &overload_postfix
 }
 
 

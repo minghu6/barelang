@@ -1,14 +1,16 @@
 use inkwell::{
     builder::Builder,
     context::Context,
+    module::Linkage,
     types::{BasicMetadataTypeEnum, BasicTypeEnum, FunctionType},
     values::FunctionValue,
+    AddressSpace,
 };
 
 use super::CompileContext;
 use crate::*;
 
-fn init_fn_definition<'ctx>(
+pub(crate) fn init_fn_definition<'ctx>(
     ans: &mut ANS<'ctx>,
     fn_val: FunctionValue<'ctx>,
 ) -> Builder<'ctx> {
@@ -22,93 +24,20 @@ fn init_fn_definition<'ctx>(
 pub(crate) fn load_primitive_function<'ctx>(
     ans: &mut ANS<'ctx>,
 ) -> Result<(), Box<dyn Error>> {
-    /* ADD */
-    let fn_val = add_primitive_function!(ans, "add" [ "usize", "usize" ] -> "usize" | inline)?;
+    let const_char_ptr_t =
+        ans.ctx.vmctx.i8_type().ptr_type(AddressSpace::Const);
+    let int_t = ans.ctx.vmctx.i32_type();
 
-    let builder = init_fn_definition(ans, fn_val);
-    builder.build_int_add(
-        fn_val.get_nth_param(0).unwrap().into_int_value(),
-        fn_val.get_nth_param(1).unwrap().into_int_value(),
-        "",
+    /* Add C printf */
+    let fn_cprintf_t = int_t.fn_type(&[const_char_ptr_t.into()], true);
+    ans.ctx.vmmod.add_function(
+        "printf",
+        fn_cprintf_t,
+        Some(Linkage::External),
     );
-
-    let fn_val = add_primitive_function!(ans, "add" [ "u32", "u64" ] -> "u64" | inline)?;
-    let builder = init_fn_definition(ans, fn_val);
-    builder.build_int_add(
-        fn_val
-            .get_nth_param(0)
-            .unwrap()
-            .into_int_value()
-            .const_cast(ans.ctx.vmctx.i64_type(), true),
-        fn_val.get_nth_param(1).unwrap().into_int_value(),
-        "",
-    );
-
-    let fn_val = add_primitive_function!(ans, "add" [ "float", "i64" ] -> "float" | inline)?;
-    let builder = init_fn_definition(ans, fn_val);
-
-    let arg1st = fn_val.get_nth_param(0).unwrap().into_float_value();
-    let arg2nd = builder
-        .build_bitcast(
-            fn_val.get_nth_param(1).unwrap(),
-            ans.ctx.vmctx.f64_type(),
-            "",
-        )
-        .into_float_value();
-    builder.build_float_add(arg1st, arg2nd, "");
-
-    let fn_val = add_primitive_function!(ans, "add" [ "i64", "float" ] -> "float" | inline)?;
-    let builder = init_fn_definition(ans, fn_val);
-
-    builder.build_int_add(
-        fn_val
-            .get_nth_param(0)
-            .unwrap()
-            .into_int_value()
-            .const_cast(ans.ctx.vmctx.i64_type(), true),
-        fn_val
-            .get_nth_param(1)
-            .unwrap()
-            .into_float_value()
-            .const_to_signed_int(ans.ctx.vmctx.i64_type()),
-        "",
-    );
-
-    /* SUB */
-    let fn_val = add_primitive_function!(ans, "sub" [ "usize", "usize" ] -> "usize" | inline)?;
-    let builder = init_fn_definition(ans, fn_val);
-
-    builder.build_int_sub(
-        fn_val.get_nth_param(0).unwrap().into_int_value(),
-        fn_val.get_nth_param(1).unwrap().into_int_value(),
-        "",
-    );
-
-
-    /* GT */
-    let fn_val = add_primitive_function!(ans, "gt" [ "usize", "usize" ] -> "usize" | inline)?;
-    let builder = init_fn_definition(ans, fn_val);
-    let ret = builder.build_int_compare(
-        inkwell::IntPredicate::UGE,
-        fn_val.get_nth_param(0).unwrap().into_int_value(),
-        fn_val.get_nth_param(1).unwrap().into_int_value(),
-        ""
-    );
-
-    builder.build_return(Some(&ret));
-
-    /* GTE */
-
-
-
-    /* NOT */
-
-
 
     Ok(())
 }
-
-
 
 #[macro_export]
 macro_rules! add_primitive_function {
