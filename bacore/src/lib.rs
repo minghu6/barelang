@@ -32,11 +32,11 @@ pub struct VMCtxHolder<'ctx> {
     _marker: PhantomData<&'ctx ()>
 }
 
-
 impl<'ctx> VMCtxHolder<'ctx> {
     pub fn new(config: CompilerConfig) -> Self {
         VMCtxHolder {
             vmctx: Context::create(),
+
             config,
             _marker: PhantomData
         }
@@ -92,3 +92,4 @@ mod test {
         Ok(())
     }
 }
+

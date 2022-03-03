@@ -23,3 +23,13 @@ u8 -> u32
        | -> usize(32) -> i32 -> usize(64)
 ```
 
+
+2. 强调纯函数操作，
+
+ 方便注册 对称性(symmetry):
+
+ ```
+       symmetry(fun-prefix, left | right)
+
+ ```
+

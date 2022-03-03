@@ -27,6 +27,10 @@ testexp2: build copybin
 testforeignapi:
 	cargo test -- --nocapture test_rsclib
 
+testiodemo:
+	cargo test -- --nocapture test_io
+
+
 testllvm_iterarray:
 	cargo test -- --nocapture test_llvm_iterarray
 

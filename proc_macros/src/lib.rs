@@ -263,6 +263,50 @@ pub fn make_simple_error_rules(input: TokenStream) -> TokenStream {
     })
 }
 
+////////////////////////////////////////////////////////////////////////////////
+//// Load VM Common Type
+struct LoadVMCommonType {
+    ctx: Expr
+}
+
+impl Parse for LoadVMCommonType {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let context_name = input.parse()?;
+
+        Ok(Self { ctx: context_name })
+    }
+}
+
+#[proc_macro]
+pub fn load_vm_common_ty(input: TokenStream) -> TokenStream {
+    let LoadVMCommonType {
+        ctx
+    } = parse_macro_input!(input as LoadVMCommonType);
+
+    TokenStream::from(quote! {
+        use inkwell::AddressSpace;
+
+        // Int type
+        let i8_t = #ctx.i8_type();
+        let i32_t = #ctx.i32_type();
+        let i64_t = #ctx.i64_type();
+        let i128_t = #ctx.i128_type();
+
+        // Void Type
+        let void_t = #ctx.void_type();
+
+        // Ptr Type
+        let i8ptr_t = i8_t.ptr_type(AddressSpace::Generic);
+        let i32ptr_t = i32_t.ptr_type(AddressSpace::Generic);
+        let i64ptr_t = i64_t.ptr_type(AddressSpace::Generic);
+        let i128ptr_t = i128_t.ptr_type(AddressSpace::Generic);
+
+        // Float Type
+        let f64_t = #ctx.f64_type();
+
+    })
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 /////// ht![Head | Tail] -> New Vector

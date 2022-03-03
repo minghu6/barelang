@@ -50,6 +50,7 @@ dependencies = [
  "inkwell",
  "itertools",
  "lazy_static",
+ "libc",
  "lisparser",
  "m6stack",
  "regex",

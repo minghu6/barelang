@@ -1,5 +1,7 @@
 #![allow(unused_imports)]
 #![feature(path_file_prefix)]
+#![feature(box_syntax)]
+
 
 use bacommon::linker::link_default;
 use bacommon::runner::run_bin;

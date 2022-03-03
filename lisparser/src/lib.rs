@@ -1,4 +1,3 @@
-#![feature(destructuring_assignment)]
 #![feature(box_syntax)]
 #![feature(fmt_internals)]
 

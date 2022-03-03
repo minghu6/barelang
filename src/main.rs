@@ -256,9 +256,9 @@ fn compile(config: CompilerConfig, file: SrcFileInfo) -> Result<(), Box<dyn Erro
     dyn_compile(config, file)
 }
 
-fn compile_bacore(config: CompilerConfig, file: SrcFileInfo)  -> Result<(), Box<dyn Error>> {
+fn compile_bacore(config: CompilerConfig, _file: SrcFileInfo)  -> Result<(), Box<dyn Error>> {
 
-    let holder = VMCtxHolder::new(config);
+    let _holder = VMCtxHolder::new(config);
 
 
 

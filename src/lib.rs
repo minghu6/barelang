@@ -1,9 +1,9 @@
 #![feature(extend_one)]
 #![feature(type_alias_impl_trait)]
-#![feature(destructuring_assignment)]
 #![feature(let_chains)]
 #![feature(option_get_or_insert_default)]
 #![feature(path_file_prefix)]
+#![feature(box_syntax)]
 
 #![allow(mixed_script_confusables)]
 #![allow(incomplete_features)]

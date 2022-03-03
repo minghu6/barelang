@@ -2,22 +2,19 @@
 (in-ns core)
 
 
-; (template-struct [generic-type+] struct-name [params?])
-(def-template-struct [T] MemBuf
-    [
-        { :type-primitive usize } cap  ; ^{ :type-primitive 'usize }
-        { :type-template T :addr ptr :generic [T] } ptr
-    ]
+(def-template-struct (T) MemBuf
+    (usize cap)
+    ((T) ptr)
 )
 
 
 ;; (template-fn [generic-type+] struct-name [params?] ret [stmt*])
-(def-template-fn [T] index-of
+(def-template-fn (T) index-of
     [
         { :type-struct MemBuf :generic [T] } buf
         { :type-primitive usize } idx
     ]
-    { :type-template T :generic [T] }
+    (T :generic [T] }
 
     (deref (+ (attr buf ptr) idx))
 )
@@ -66,11 +63,9 @@
     )
 )
 
-(def-template-fn [T] push
-    [
-        { :type-struct RawArr :generic [T] :addr ptr } arr
-        { :type-template T :generic [T] } elem
-    ]
+(def-template-fn :generic (T) push
+        ( :type-struct RawArr :generic [T] :addr ptr ) arr
+        ( :type-template T :generic [T] ) elem
     {}
 
     (

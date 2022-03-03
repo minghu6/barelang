@@ -11,10 +11,13 @@ pub extern "C" fn printi(x: i32) -> i32 {
 
 #[no_mangle]
 pub extern "C" fn printi32(x: i32) -> i32 {
-    print!("{}\n", x);
+    println!("{}", x);
     x
 }
 
+/// # Safety
+///
+/// This function should not be called before the horsemen are ready.
 #[no_mangle]
 pub extern "C" fn prints(x: *const c_char) -> *const c_char {
     let c_str = unsafe { CStr::from_ptr(x) };

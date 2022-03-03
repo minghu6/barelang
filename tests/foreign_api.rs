@@ -1,16 +1,7 @@
 #![allow(unused_imports)]
 #![feature(path_file_prefix)]
+#![feature(box_syntax)]
 
-use bacommon::linker::link_default;
-use bacommon::runner::run_bin;
-use inkwell::context::Context;
-use inkwell::module::{Linkage, Module};
-use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
-use inkwell::types::{AnyTypeEnum, BasicTypeEnum};
-use inkwell::values::{AnyValue, BasicValue, BasicValueEnum};
-use inkwell::AddressSpace;
-use inkwell::OptimizationLevel;
-use itertools::Itertools;
 
 use std::convert::TryInto;
 use std::error::Error;
@@ -18,9 +9,22 @@ use std::ffi::{CStr, CString};
 use std::fmt::Display;
 use std::path::Path;
 
+use bacommon::linker::link_default;
+use bacommon::runner::run_bin;
+use inkwell::context::Context;
+use inkwell::module::{Linkage, Module};
+use inkwell::targets::{
+    CodeModel, InitializationConfig, RelocMode, Target, TargetMachine,
+};
+use inkwell::types::{AnyTypeEnum, BasicTypeEnum};
+use inkwell::values::{AnyValue, BasicValue, BasicValueEnum};
+use inkwell::AddressSpace;
+use inkwell::OptimizationLevel;
+use itertools::Itertools;
+
 mod common;
 
-
+use crate::common::print_obj;
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Running Error
@@ -73,9 +77,13 @@ fn rsclib_codegen() -> Result<(), Box<dyn Error>> {
     /* Extern Function */
     /* C printf */
     let fn_cprintf_t = i32ptr_t.fn_type(&[i8ptr_t.into()], true);
-    let fn_cprintf = module.add_function("printf", fn_cprintf_t, Some(Linkage::External));
+    let fn_cprintf =
+        module.add_function("printf", fn_cprintf_t, Some(Linkage::External));
 
-    let ctx_s = context.const_string("printf: p-int: %d, p-float: %f, p-s: %s\n".as_bytes(), true);
+    let ctx_s = context.const_string(
+        "printf: p-int: %d, p-float: %f, p-s: %s\n".as_bytes(),
+        true,
+    );
     let ctrl_s_ptr = builder.build_alloca(ctx_s.get_type(), "");
     builder.build_store(ctrl_s_ptr, ctx_s);
 
@@ -86,12 +94,12 @@ fn rsclib_codegen() -> Result<(), Box<dyn Error>> {
     builder.build_call(
         fn_cprintf,
         &[
-                ctrl_s_ptr.into(),
-                i32_t.const_int(12345, true).into(),
-                f64_t.const_float(123.45).into(),
-                s1_ptr.into()
-            ],
-        ""
+            ctrl_s_ptr.into(),
+            i32_t.const_int(12345, true).into(),
+            f64_t.const_float(123.45).into(),
+            s1_ptr.into(),
+        ],
+        "",
     );
 
 
@@ -99,7 +107,8 @@ fn rsclib_codegen() -> Result<(), Box<dyn Error>> {
     let s0 = "hello, barelang";
 
     let fn_prints_t = i8ptr_t.fn_type(&[i8ptr_t.into()], false);
-    let fn_prints = module.add_function("prints", fn_prints_t, Some(Linkage::External));
+    let fn_prints =
+        module.add_function("prints", fn_prints_t, Some(Linkage::External));
 
     let s0 = "hello, barelang; 你好，裸雨";
     let mut s0_i_vec = s0
@@ -108,15 +117,19 @@ fn rsclib_codegen() -> Result<(), Box<dyn Error>> {
         .map(|x| i8_t.const_int(*x as u64, false))
         .collect_vec();
 
-    let s0_len = i64_type.const_int((s0.len() as usize).try_into().unwrap(), false);
+    let s0_len =
+        i64_type.const_int((s0.len() as usize).try_into().unwrap(), false);
     let s0_ptr = builder.build_array_alloca(i8ptr_t, s0_len, "xxx");
     let s0_ptr_v = i8_t.const_array(&s0_i_vec[..]);
 
     // codegen store
     builder.build_store(s0_ptr, s0_ptr_v);
 
-    let ret_callsite =
-        builder.build_call(fn_prints, &[BasicValueEnum::PointerValue(s0_ptr).into()], "prints");
+    let ret_callsite = builder.build_call(
+        fn_prints,
+        &[BasicValueEnum::PointerValue(s0_ptr).into()],
+        "prints",
+    );
 
     let ret_basic = ret_callsite.try_as_basic_value().left().unwrap();
     let ret_arr = ret_basic.into_pointer_value();
@@ -134,7 +147,11 @@ fn rsclib_codegen() -> Result<(), Box<dyn Error>> {
 
     /* printi32 */
     let fn_printi32_t = i32_t.fn_type(&[i32_t.into()], false);
-    let fn_printi32_t = module.add_function("printi32", fn_printi32_t, Some(Linkage::External));
+    let fn_printi32_t = module.add_function(
+        "printi32",
+        fn_printi32_t,
+        Some(Linkage::External),
+    );
 
     let reti32_callsite = builder.build_call(
         fn_printi32_t,
@@ -160,42 +177,21 @@ fn rsclib_codegen() -> Result<(), Box<dyn Error>> {
     //     _ => unreachable!()
     // };
 
-    let new_int =
-        builder.build_int_add(reti32_basic.into_int_value(), i32_t.const_int(2, true), "");
+    let new_int = builder.build_int_add(
+        reti32_basic.into_int_value(),
+        i32_t.const_int(2, true),
+        "",
+    );
     builder.build_call(fn_printi32_t, &[new_int.into()], "printi32");
 
     builder.build_return(Some(&i64_type.const_zero()));
 
     ///////////////////////////////////////////////////////////////////////////
     //// Target Generation
-    Target::initialize_native(&InitializationConfig::default())?;
-
-    let triple = TargetMachine::get_default_triple();
-    module.set_triple(&triple);
-
-    let target = Target::from_triple(&triple).unwrap();
-
-    let machine = target
-        .create_target_machine(
-            &triple,
-            "generic",
-            "",
-            OptimizationLevel::Default,
-            RelocMode::Default,
-            CodeModel::Default,
-        )
-        .unwrap();
-
-    module.set_data_layout(&machine.get_target_data().get_data_layout());
-
-    machine.write_to_file(
-        &module,
-        inkwell::targets::FileType::Object,
-        Path::new("./output.o"),
-    )?;
-
-    Ok(())
+    print_obj(&module, OptimizationLevel::None)
 }
+
+
 
 #[test]
 fn test_rsclib() -> Result<(), Box<dyn Error>> {
