@@ -1,0 +1,15 @@
+[package]
+name = "liblang"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+m6arr = "0.1.0"
+num-traits = "0.2"
+num-derive = "0.3"
+indexmap = "1.6.*"
+
+
+[lib]
+crate-type = ["staticlib"]

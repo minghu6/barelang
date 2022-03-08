@@ -38,4 +38,4 @@ path = "lisparser"
 
 
 [workspace]
-members = ["proc_macros", "lib/rsclib", "bacore", "bacommon", "lisparser"]
+members = ["proc_macros", "lib/*", "bacore", "bacommon", "lisparser"]

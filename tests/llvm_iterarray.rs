@@ -165,6 +165,8 @@ fn llvm_codegen() -> Result<(), Box<dyn Error>> {
     let int_arr_ptr =
         builder.build_array_malloc(i32_t, int_arr_capcity, "")?;
 
+
+
     // builder.build_store(int_arr_ptr, int_arr_val);
     for (i, int) in int_arr.into_iter().enumerate() {
         let idx = i64_t.const_int(i as u64, false);
