@@ -1,86 +1,52 @@
 use std::{
+    cmp::Ordering,
     collections::VecDeque,
+    ffi::CString,
     iter::zip,
     mem::size_of,
-    ops::Add,
-    ptr::{copy_nonoverlapping, null_mut},
+    ops::{Index, IndexMut},
+    ptr::{copy, copy_nonoverlapping, null, null_mut},
     slice::from_raw_parts,
 };
 
+use m6arr::Array;
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
 
 use crate::allocator::{allocate, deallocate};
 
 
-#[derive(FromPrimitive, ToPrimitive)]
+#[derive(FromPrimitive, ToPrimitive, Clone, Copy)]
 pub enum PriTy {
-    U8 = 0,
-    I8,
-    U16,
-    I16,
-    U32,
-    I32,
-    U64,
-    I64,
-    USIZE,
-
-    F32,
-    F64,
-    // Ptr,  // usize
+    Int = 0,
+    Str,
 }
 
 impl PriTy {
     fn size_of(&self) -> usize {
-        match self {
-            PriTy::U8 => 1,
-            PriTy::I8 => 1,
-            PriTy::U16 => 2,
-            PriTy::I16 => 2,
-            PriTy::U32 => 4,
-            PriTy::I32 => 4,
-            PriTy::U64 => 8,
-            PriTy::I64 => 8,
-            PriTy::USIZE => 8, // en... FIXME:!
-            PriTy::F32 => 4,
-            PriTy::F64 => 8,
-            PriTy::Str => 8,
+        size_of::<usize>()
+    }
+
+    fn get_cmp(&self) -> Box<dyn Fn(usize, usize) -> Ordering> {
+        unsafe {
+            match self {
+                Self::Int => {
+                    box |p1: usize, p2: usize| -> Ordering { p1.cmp(&p2) }
+                }
+                Self::Str => {
+                    box |p1: usize, p2: usize| -> Ordering {
+                        let p1cstr = CString::from_raw(p1 as *mut i8);
+                        let p2cstr = CString::from_raw(p2 as *mut i8);
+
+                        p1cstr.cmp(&p2cstr)
+                    }
+                }
+            }
         }
     }
 
-    fn is_valid_vector_index(&self) -> bool {
-        match &self {
-            #[cfg(target_pointer_width = "64")]
-            PriTy::U8 | PriTy::U16 | PriTy::U32 | PriTy::U64 => true,
-
-            #[cfg(target_pointer_width = "32")]
-            PriTy::U8 | PriTy::U16 | PriTy::U32 => true,
-
-            #[cfg(target_pointer_width = "16")]
-            PriTy::U8 | PriTy::U16 => true,
-
-            _ => false,
-        }
-    }
 }
 
-
-// trait MapKey = Hash + Eq;
-
-// enum Map<K: MapKey, V> {
-//     Vec(Vec<V>),
-//     IndexMap(IndexMap<K, V>)
-// }
-
-// impl<K: MapKey, V> Map<K, V> {
-//     fn insert(&mut self) {
-//         match self {
-//             Map::Vec(mut vec) => vec.pu,
-//             Map::IndexMap(_) => todo!(),
-//         }
-//     }
-
-// }
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -116,7 +82,7 @@ impl MixedVec {
 
     pub fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = *const u8> + 'a> {
         let mut i = 0;
-        let mixp = unsafe { self as *const Self };
+        let mixp = self as *const Self;
 
         box std::iter::from_fn(move || {
             if i >= self.len() {
@@ -239,13 +205,83 @@ pub unsafe extern "C" fn mixedvec_get(
 ////////////////////////////////////////////////////////////////////////////////
 //// N-dimensional space
 
-#[derive(Clone, Copy)]
+/// ```no_run
+/// raw: [base_tyid(u8), dlen(usize), meta(usize(n)), data(bytes)]
+///
+/// data: ([key,idx(+1)] [value])...
+/// ```
+#[derive(Clone)]
 #[repr(C)]
 pub struct NDS {
-    raw: *mut u8, // [base_tyid(u8), dlen(usize), meta(usize(n)), data(bytes)]
+    raw: *mut u8,
+}
+
+impl NDS {
+    pub fn new(base: PriTy, dtys: &[(PriTy, usize)]) -> Self {
+        unsafe {
+            let dtyids_len = dtys.len();
+
+            let mut dtyids = Array::new(dtyids_len);
+            let mut dtylens = Array::new(dtyids_len);
+
+            for (i, (ty, len)) in dtys.iter().enumerate() {
+                dtyids[i] = ty.to_u8().unwrap();
+                dtylens[i] = *len;
+            }
+
+            let raw = nds_create(
+                base.to_u8().unwrap(),
+                dtyids.as_ptr(),
+                dtylens.as_ptr(),
+                dtyids_len,
+            );
+
+            Self { raw }
+        }
+    }
+
+    fn get_len(&self) -> usize {
+        // bytes
+        unsafe {
+            let raw = self.raw;
+
+            let meta_len = *(raw as *const usize);
+
+            let meta_p = (raw as *const usize).add(1);
+            let meta = from_raw_parts(meta_p, meta_len);
+
+            let meta_plain = parse_nds_meta(meta);
+
+            let (offset, _, len) = meta_plain[0];
+
+            (meta_len + 1) * size_of::<usize>() + 1 + offset * len
+        }
+    }
+}
+
+impl Index<&[usize]> for NDS {
+    type Output = usize;
+
+    fn index(&self, index: &[usize]) -> &Self::Output {
+        unsafe { &*(nds_get(self.raw, index.as_ptr()) as *const usize) }
+    }
+}
+
+impl IndexMut<&[usize]> for NDS {
+    fn index_mut(&mut self, index: &[usize]) -> &mut Self::Output {
+        unsafe { &mut *nds_assoc(self.raw, index.as_ptr()) }
+    }
 }
 
 
+impl Drop for NDS {
+    fn drop(&mut self) {
+        unsafe { deallocate(self.raw, self.get_len()) }
+    }
+}
+
+
+// 8bit (it seems that 1 or 2 bit is ok!)
 fn inject_ty_into_len(ty: u8, len: usize) -> usize {
     let rem_bytes = size_of::<usize>() - 1;
     let len_limit = 1usize << (rem_bytes * 8);
@@ -264,155 +300,315 @@ fn extract_ty_from_len(packed_len: usize) -> (u8, usize) {
     (ty, origin_len)
 }
 
-fn parse_nds_meta(base_ty: PriTy, meta: &[usize]) -> Vec<usize> {
-    let mut offset = base_ty.size_of();
-    let mut offsets = VecDeque::new();
 
-    for packed_len in meta {
-        let (tyid, len) = extract_ty_from_len(*packed_len);
-
-        let mut unit = offset;
-
-        if !ty.is_valid_vector_index() {
-            unit += ty.size_of();
-        }
-
-        offsets.push_front(unit);
-        offset = unit * len;
-    }
-
-    offsets
-}
-
+const PRI_SIZE: usize = size_of::<usize>();
 
 pub unsafe extern "C" fn nds_create(
-    base_ty: u8,
-    meta_dty: *const u8,
-    meta_dlen: *const usize, // size_t
-    meta_len: usize,
-) -> NDS {
-    let dtyids = from_raw_parts(meta_dty, meta_len);
-    let dlens = from_raw_parts(meta_dlen, meta_len);
+    base_tyid: u8,
+    dtyids: *const u8,
+    dtycaps: *const usize,
+    dtyids_len: usize,
+) -> *mut u8 {
+    let dtyids = from_raw_parts(dtyids, dtyids_len);
+    let dtylens = from_raw_parts(dtycaps, dtyids_len);
 
-    let meta_len_part_size = size_of::<usize>();
-    let meta_part_size = size_of::<usize>() * meta_len;
+    // Integrate
+    let mut meta = VecDeque::new();
+    for (dtyid, dtylen) in zip(dtyids, dtylens) {
+        meta.push_front(inject_ty_into_len(*dtyid, *dtylen));
+    }
+    let meta_size = size_of::<usize>() * dtyids_len;
 
-    let mut data_part_size = PriTy::from_u8(base_ty).unwrap().size_of();
-    let mut meta_part = VecDeque::new();
+    // Calculate data part len
+    let data_size = dtylens.iter().fold(PRI_SIZE, |acc, x| {
+        acc * x + (PRI_SIZE + size_of::<usize>()) * x
+    });
 
-    for (dty, dlen) in zip(dtyids, dlens).rev() {
-        let ty = PriTy::from_u8(*dty).unwrap();
+    let raw =  // meta_len, meta(packed dtycaps), base_tyid, data((key, idx)..., value...)
+        allocate(size_of::<usize>() + meta_size + 1 + data_size);
 
-        if ty.is_valid_vector_index() {
-            data_part_size *= dlen;
-        } else {
-            data_part_size = (data_part_size + ty.size_of()) * dlen;
-        }
+    *(raw as *mut usize) = dtyids_len;
 
-        meta_part.push_front(inject_ty_into_len(*dty, *dlen));
+    let mut meta_p = (raw as *mut usize).add(1);
+    for meta_unit in meta {
+        (*meta_p) = meta_unit;
+        meta_p = meta_p.add(1);
     }
 
-    let raw =
-        allocate(1 + meta_len_part_size + meta_part_size + data_part_size);
-
-    *raw = base_ty;
-
-    let mut p = raw.add(1) as *mut usize;
-    (*p) = meta_len_part_size;
-
-    for meta_unit in meta_part {
-        p = p.add(1);
-        (*p) = meta_unit;
-    }
-
-    NDS { raw }
+    *(meta_p as *mut u8) = base_tyid;
+    // Box::into_raw(box NDS { raw })
+    raw
 }
 
 
-unsafe fn nds_assoc(nds: *mut NDS, attrs: *const MixedVec, value: u64) -> i32 {
-    let attrs = &*attrs;
-    let raw = (*nds).raw;
 
-    let base_tyid = *raw;
-    let base_ty = PriTy::from_u8(base_tyid).unwrap();
+/// (offset, PriTy, len)
+fn parse_nds_meta(meta: &[usize]) -> VecDeque<(usize, PriTy, usize)> {
+    let mut meta_plain = VecDeque::new();
+    let mut offset = PRI_SIZE;
 
-    let dlen = *(raw.add(1) as *const usize);
-    let meta = (raw as *const usize).add(1);
-    let meta_s = from_raw_parts(meta, dlen);
-    let data = meta.add(dlen) as *mut u8;
+    for packed_len in meta {
+        let (tyid, cap) = extract_ty_from_len(*packed_len);
+        let ty = PriTy::from_u8(tyid).unwrap();
+
+        meta_plain.push_front((offset, ty, cap));
+        offset = (offset + PRI_SIZE + size_of::<usize>()) * cap;
+    }
+
+    meta_plain
+}
+
+
+/// Binary search filledlen
+unsafe fn bfindlen(keypair_start: *const u8, cap: usize) -> usize {
+    let getkey = |p: *const u8| *(p as *const usize);
+    let keypair_unit_size = size_of::<usize>() * 2;
+
+    // find last filled index
+    let mut l = 0;
+    let mut h = cap; // [l, h)
+    let mut fill_len = None;
+
+    while l < h && h > 0 {
+        let pivot = (h + l) / 2;
+
+        if getkey(keypair_start.add(pivot * keypair_unit_size)) == 0 {
+            if pivot > 0
+                && getkey(keypair_start.add((pivot - 1) * keypair_unit_size))
+                    > 0
+            {
+                // BINGO!
+                fill_len = Some(pivot);
+                break;
+            }
+
+            h = pivot;
+        } else {
+            l = pivot + 1;
+        }
+    }
+
+    if h == 0 {
+        0
+    } else if l == cap {
+        cap
+    } else {
+        fill_len.unwrap()
+    }
+}
+
+unsafe fn bfindkey(
+    keypair_start: *const u8,
+    attr: usize,
+    fill_len: usize,
+    cmp: &Box<dyn Fn(usize, usize) -> Ordering>,
+) -> *const u8 {
+    let getkey = |p: *const u8| *(p as *const usize);
+    let keypair_unit_size = size_of::<usize>() * 2;
+
+    let res;
+    let mut h = fill_len; // [l, h)
+    let mut l = 0;
+
+    loop {
+        let pivot = (h + l) / 2;
+
+        if l >= h {
+            res = Some(keypair_start.add(pivot * keypair_unit_size));
+            break;
+        }
+
+        match cmp(attr, getkey(keypair_start.add(pivot * keypair_unit_size))) {
+            Ordering::Less => {
+                h = pivot;
+            }
+            Ordering::Equal => {
+                // BINGO!
+                res = Some(keypair_start.add(pivot * keypair_unit_size));
+                break;
+            }
+            Ordering::Greater => {
+                l = pivot + 1;
+            }
+        }
+    }
+
+    res.unwrap()
+}
+
+
+
+pub unsafe extern "C" fn nds_assoc(
+    raw: *mut u8,
+    attrs: *const usize,
+) -> *mut usize {
+    // unpack raw
+    let meta_len = *(raw as *const usize);
+    let attrs = from_raw_parts(attrs, meta_len);
+
+    let meta_p = (raw as *const usize).add(1);
+    let meta = from_raw_parts(meta_p, meta_len);
+
+    let base_ty_p = meta_p.add(meta_len) as *const u8;
+
+    let data = base_ty_p.add(1);
 
     let mut p = data;
 
-    let offsets = parse_nds_meta(base_ty, meta_s);
+    let meta_plain = parse_nds_meta(meta);
 
-    for (offset, (attr_p, packed_len)) in
-        zip(offsets, zip(attrs.iter(), meta_s))
-    {
-        let (tyid, len) = extract_ty_from_len(*packed_len);
-        let ty: PriTy = PriTy::from_u8(tyid).unwrap();
+    let getkey = |p: *const u8| *(p as *const usize);
+    let getidx = |p: *const u8| *(p as *const usize).add(1);
+    let set_keypair = |p: *const u8, key: usize, idx: usize| {
+        *(p as *mut usize) = key;
+        *(p as *mut usize).add(1) = idx;
+    };
 
-        match ty {
-            PriTy::U8 => {
-                let idx = *attr_p;
+    for (attr, (offset, ty, cap)) in zip(attrs, meta_plain) {
+        let attr = attr + 1; // To distinguish with unfilled area (0).
 
-                p = p.add(idx * offset);
-            },
-            PriTy::I8 => {
+        let key_size = PRI_SIZE;
+        let idx_size = size_of::<usize>();
+        let keypair_unit_size = key_size + idx_size;
 
+        let keypair_start = p;
+        let keypair_end = keypair_start.add(keypair_unit_size * cap);
+        let value_start = keypair_end;
+
+        // println!(
+        //     "assoc keypair_start_addr: {:02x}: {}",
+        //     keypair_start as usize,
+        //     getkey(keypair_start)
+        // );
+
+        // find filled end
+        let fill_len = bfindlen(keypair_start, cap);
+
+
+        // Insert sort
+
+        // bin find
+        let cmp = ty.get_cmp();
+
+        if fill_len > 0 {
+            let res = bfindkey(keypair_start, attr, fill_len, &cmp);
+
+            // The key doesn't exist yet !
+            if cmp(attr, getkey(res)) != Ordering::Equal {
+                debug_assert!(fill_len < cap);
+
+                let insert_point = res as *mut u8;
+
+                let insert_idx = (insert_point as usize
+                    - keypair_start as usize)
+                    / keypair_unit_size;
+
+                copy(
+                    insert_point,
+                    insert_point.add(keypair_unit_size),
+                    (fill_len - insert_idx) * keypair_unit_size,
+                );
+
+                set_keypair(insert_point, attr, fill_len);
             }
-            PriTy::U16 => {
-                let idx = *attr_p as *const u16;
 
-                p = p.add(idx * offset);
-            }
-            PriTy::I16 => {}
-            PriTy::U32 => {
-                let idx = *attr_p as *const u32;
+            let valueidx = getidx(res);
 
-                p = p.add(idx * offset);
-            }
-            PriTy::I32 => {}
-            PriTy::U64 => {
-                let idx = *attr_p as *const u64;
+            p = value_start.add(valueidx * offset);
+        } else {
+            set_keypair(keypair_start, attr, 0);
 
-                p = p.add(idx * offset);
-            }
-            PriTy::I64 => {}
-            PriTy::USIZE => {
-                let idx = *attr_p as *const usize;
-
-                p = p.add(idx * offset);
-            }
-
-            PriTy::F32 => {
-
-            }
-            PriTy::F64 => {
-
-            }
+            p = value_start;
         }
     }
 
-    0
+    // update value
+    p as *mut usize
 }
+
+
+pub unsafe extern "C" fn nds_get(
+    raw: *mut u8,
+    attrs: *const usize,
+) -> *const u8 {
+    // unpack raw
+    let meta_len = *(raw as *const usize);
+    let attrs = from_raw_parts(attrs, meta_len);
+
+    let meta_p = (raw as *const usize).add(1);
+    let meta = from_raw_parts(meta_p, meta_len);
+
+    let base_ty_p = meta_p.add(meta_len) as *const u8;
+
+    let data = base_ty_p.add(1);
+
+    let mut p = data;
+
+    let meta_plain = parse_nds_meta(meta);
+
+    let getkey = |p: *const u8| *(p as *const usize);
+    let getidx = |p: *const u8| *(p as *const usize).add(1);
+
+    for (attr, (offset, ty, cap)) in zip(attrs, meta_plain) {
+        let attr = attr + 1;  // To distinguish with unfilled area (0).
+
+        let key_size = PRI_SIZE;
+        let idx_size = size_of::<usize>();
+        let keypair_unit_size = key_size + idx_size;
+
+        let keypair_start = p;
+        let keypair_end = keypair_start.add(keypair_unit_size * cap);
+
+        // println!(
+        //     "get keypair_start_addr: {:02x}: {}",
+        //     keypair_start as usize,
+        //     getkey(keypair_start)
+        // );
+
+        // find filled end
+        let fill_len = bfindlen(keypair_start, cap);
+
+        if fill_len == 0 {
+            return null();
+        }
+        // Insert sort
+
+        // bin find
+        let cmp = ty.get_cmp();
+
+        let res = bfindkey(keypair_start, attr, fill_len, &cmp);
+
+        // The key doesn't exist yet !
+        if cmp(attr, getkey(res)) != Ordering::Equal {
+            return null();
+        }
+
+        let valueidx = getidx(res);
+        let value_start = keypair_end;
+
+        p = value_start.add(valueidx * offset)
+    }
+
+    p
+}
+
 
 
 
 #[cfg(test)]
 mod tests {
-    use std::mem::size_of;
-
     use super::MixedVec;
     use super::PriTy;
+    use super::NDS;
 
 
     #[test]
     fn test_mixedvec() {
         let mut mix = MixedVec::new();
 
-        mix.push(PriTy::USIZE, 23);
-        mix.push(PriTy::F32, 12.111f32.to_bits() as u64);
-        mix.push(PriTy::I8, 0xFF);
+        mix.push(PriTy::Int, 23);
+        mix.push(PriTy::Int, 12.111f32.to_bits() as u64);
+        mix.push(PriTy::Int, 0xFF);
 
         unsafe {
             assert_eq!(*(mix.get(0) as *const usize), 23);
@@ -421,4 +617,16 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_nds() {
+        let mut n1 = NDS::new(PriTy::Int, &[(PriTy::Int, 3)]);
+
+        n1[&[2]] = 4;
+        n1[&[1]] = 1;
+        n1[&[3]] = 9;
+
+        assert_eq!(n1[&[1]], 1);
+        assert_eq!(n1[&[3]], 9);
+        assert_eq!(n1[&[2]], 4);
+    }
 }
