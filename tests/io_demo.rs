@@ -5,7 +5,7 @@
 use std::convert::TryInto;
 use std::error::Error;
 
-use bacommon::linker::link_default;
+use bacommon::linker::link2_default;
 use bacommon::runner::run_bin;
 use inkwell::OptimizationLevel;
 use libc;
@@ -17,7 +17,7 @@ use proc_macros::load_vm_common_ty;
 use crate::common::print_obj;
 use crate::common::VMCtxHolder;
 
-
+use mixin::n::PriTy;
 
 #[test]
 fn test_io() -> Result<(), Box<dyn Error>> {
@@ -34,7 +34,10 @@ fn test_io() -> Result<(), Box<dyn Error>> {
     // open it
     let fn_open = module.get_function("open").unwrap();
     let (fns, _) = holder.build_local_str(&builder, "hello.txt");
-    let flags = holder.i32((libc::O_CREAT | libc::O_WRONLY).try_into().unwrap());
+    let flags = i32_t.const_int(
+        (libc::O_CREAT | libc::O_WRONLY).try_into().unwrap(),
+        true
+    );
     let fd = builder
         .build_call(fn_open, &[fns.into(), flags.into()], "")
         .try_as_basic_value()
@@ -51,6 +54,54 @@ fn test_io() -> Result<(), Box<dyn Error>> {
         "",
     );
 
+    // test nds
+    let base_ty = i8_t.const_int(
+        PriTy::Str.as_value() as u64, false
+    );
+
+    let (dtyids, dtyids_len) = holder.build_local_u8_array(
+        &builder,
+        &[
+            holder.u8(PriTy::Int.as_value()),
+            holder.u8(PriTy::Str.as_value())
+        ]
+    );
+
+    let (dtycaps, _) = holder.build_local_u8_array(
+        &builder,
+        &[holder.u8(2), holder.u8(7)]
+    );
+
+    // create nds
+    let fn_nds_create = module.get_function("nds_create").unwrap();
+    let nds_raw = builder.build_call(
+        fn_nds_create,
+        &[base_ty.into(), dtyids.into(), dtycaps.into(), dtyids_len.into()],
+        ""
+    )
+    .try_as_basic_value()
+    .left()
+    .unwrap();
+
+    // assoc nds
+    let (hs1, hs1_len)
+        = holder.build_local_str(&builder, "hello, ");
+    let (hs2, hs2_len)
+         = holder.build_local_str(&builder, "world!");
+
+    let (sk1, _)
+        = holder.build_local_str(&builder, "h-,");
+    let (sk2, _)
+        = holder.build_local_str(&builder, "w-!");
+
+    let (attrs, _) = holder.build_local_usize_array(
+        &builder,
+        &[
+            size_t.const_int(0, false).into(),
+            sk1.const_to_int(size_t).into()
+        ]
+    );
+
 
     // end main
     builder.build_return(Some(&i64_t.const_zero()));
@@ -58,6 +109,6 @@ fn test_io() -> Result<(), Box<dyn Error>> {
     print_obj(&module, OptimizationLevel::None)?;
     println!("->: {}", module_name!());
     let output = module_name!() + ".out";
-    link_default(&output)?;
-    run_bin(&output)
+    link2_default(&output)
+    // run_bin(&output)
 }

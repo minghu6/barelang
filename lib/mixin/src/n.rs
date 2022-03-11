@@ -1,7 +1,7 @@
 use std::{
     cmp::Ordering,
     collections::VecDeque,
-    ffi::{CStr, CString},
+    ffi::CStr,
     iter::zip,
     mem::size_of,
     ops::{Index, IndexMut},
@@ -23,6 +23,16 @@ pub enum PriTy {
 }
 
 impl PriTy {
+    pub fn encode(raw: &[Self]) -> Vec<u8> {
+        let mut vec = vec![];
+
+        for pri in raw {
+            vec.push(pri.to_u8().unwrap())
+        }
+
+        vec
+    }
+
     fn size_of(&self) -> usize {
         size_of::<usize>()
     }
@@ -44,6 +54,10 @@ impl PriTy {
                 },
             }
         }
+    }
+
+    pub fn as_value(&self) -> u8 {
+        self.to_u8().unwrap()
     }
 }
 
@@ -240,35 +254,25 @@ impl NDS {
         }
     }
 
+    #[allow(unused)]
     fn get_len(&self) -> usize {
         // bytes
         unsafe {
-            let raw = self.raw;
-
-            let meta_len = *(raw as *const usize);
-
-            let meta_p = (raw as *const usize).add(1);
-            let meta = from_raw_parts(meta_p, meta_len);
-
-            let meta_plain = parse_nds_meta(meta);
-
-            let (offset, _, len) = meta_plain[0];
-
-            (meta_len + 1) * size_of::<usize>() + 1 + offset * len
+            nds_len(self.raw)
         }
     }
 
-    fn get(&self, index: &[usize]) -> Option<usize> {
-        unsafe {
-            let res = nds_get(self.raw, index.as_ptr()) as *const usize;
+    // fn get(&self, index: &[usize]) -> Option<usize> {
+    //     unsafe {
+    //         let res = nds_get(self.raw, index.as_ptr()) as *const usize;
 
-            if res.is_null() {
-                None
-            } else {
-                Some(*res)
-            }
-        }
-    }
+    //         if res.is_null() {
+    //             None
+    //         } else {
+    //             Some(*res)
+    //         }
+    //     }
+    // }
 }
 
 impl Index<&[usize]> for NDS {
@@ -289,7 +293,7 @@ impl IndexMut<&[usize]> for NDS {
 
 impl Drop for NDS {
     fn drop(&mut self) {
-        unsafe { deallocate(self.raw, self.get_len()) }
+        unsafe { nds_deallocate(self.raw) }
     }
 }
 
@@ -319,6 +323,7 @@ fn extract_ty_from_cap(packed_len: usize) -> (u8, usize) {
 
 const PRI_SIZE: usize = size_of::<usize>();
 
+#[no_mangle]
 pub unsafe extern "C" fn nds_create(
     base_tyid: u8,
     dtyids: *const u8,
@@ -357,6 +362,29 @@ pub unsafe extern "C" fn nds_create(
 }
 
 
+#[no_mangle]
+pub unsafe extern "C" fn nds_len(raw: *mut u8) -> usize {
+    let meta_len = *(raw as *const usize);
+
+    let meta_p = (raw as *const usize).add(1);
+    let meta = from_raw_parts(meta_p, meta_len);
+
+    let meta_plain = parse_nds_meta(meta);
+
+    let (offset, _, len) = meta_plain[0];
+
+    (meta_len + 1) * size_of::<usize>() + 1 + offset * len
+}
+
+
+#[no_mangle]
+pub unsafe extern "C" fn nds_deallocate(
+    raw: *mut u8
+) {
+    let len = nds_len(raw);
+    deallocate(raw, len);
+}
+
 
 /// (offset, PriTy, len)
 fn parse_nds_meta(meta: &[usize]) -> VecDeque<(usize, PriTy, usize)> {
@@ -373,7 +401,6 @@ fn parse_nds_meta(meta: &[usize]) -> VecDeque<(usize, PriTy, usize)> {
 
     meta_plain
 }
-
 
 /// Binary search filledlen
 unsafe fn bfindlen(keypair_start: *const u8, cap: usize) -> usize {
@@ -458,7 +485,7 @@ unsafe fn bfindkey(
 }
 
 
-
+#[no_mangle]
 pub unsafe extern "C" fn nds_assoc(
     raw: *mut u8,
     attrs: *const usize,
@@ -580,6 +607,7 @@ pub unsafe extern "C" fn nds_assoc(
 }
 
 
+#[no_mangle]
 pub unsafe extern "C" fn nds_get(
     raw: *mut u8,
     attrs: *const usize,
@@ -688,46 +716,46 @@ mod tests {
 
     #[test]
     fn test_nds() {
-        // // N1 Int
-        // let mut n1 = NDS::new(PriTy::Int, &[(PriTy::Int, 4)]);
+        // N1 Int
+        let mut n1 = NDS::new(PriTy::Int, &[(PriTy::Int, 4)]);
 
-        // n1[&[2]] = 4;
-        // n1[&[1]] = 1;
-        // n1[&[3]] = 9;
-        // n1[&[0]] = 100;
+        n1[&[2]] = 4;
+        n1[&[1]] = 1;
+        n1[&[3]] = 9;
+        n1[&[0]] = 100;
 
-        // assert_eq!(n1.get(&[1]).unwrap(), 1);
-        // assert_eq!(n1.get(&[3]).unwrap(), 9);
-        // assert_eq!(n1.get(&[2]).unwrap(), 4);
+        assert_eq!(n1.get(&[1]).unwrap(), 1);
+        assert_eq!(n1.get(&[3]).unwrap(), 9);
+        assert_eq!(n1.get(&[2]).unwrap(), 4);
 
-        // n1[&[2]] = 6;
-        // assert_eq!(n1[&[2]], 6);
+        n1[&[2]] = 6;
+        assert_eq!(n1[&[2]], 6);
 
-        // // N2 Str
-        // let mut n2 = NDS::new(PriTy::Int, &[(PriTy::Str, 5)]);
+        // N2 Str
+        let mut n2 = NDS::new(PriTy::Int, &[(PriTy::Str, 5)]);
 
-        // n2[&[cstr_u("aaa")]] = 123;
-        // n2[&[cstr_u("bbb")]] = 321;
+        n2[&[cstr_u("aaa")]] = 123;
+        n2[&[cstr_u("bbb")]] = 321;
 
-        // assert_eq!(n2[&[cstr_u("bbb")]], 321);
-        // assert_eq!(n2[&[cstr_u("aaa")]], 123);
+        assert_eq!(n2[&[cstr_u("bbb")]], 321);
+        assert_eq!(n2[&[cstr_u("aaa")]], 123);
 
-        // // N3 Nested Int
-        // let mut n3 = NDS::new(
-        //     PriTy::Int,
-        //     &[
-        //         (PriTy::Int, 5),
-        //         (PriTy::Int, 3),
-        //         (PriTy::Int, 6),
-        //         ]);
+        // N3 Nested Int
+        let mut n3 = NDS::new(
+            PriTy::Int,
+            &[
+                (PriTy::Int, 5),
+                (PriTy::Int, 3),
+                (PriTy::Int, 6),
+                ]);
 
-        // n3[&[2, 1, 4]] = 7;
-        // n3[&[1, 2, 2]] = 5;
-        // n3[&[0, 3, 3]] = 6;
+        n3[&[2, 1, 4]] = 7;
+        n3[&[1, 2, 2]] = 5;
+        n3[&[0, 3, 3]] = 6;
 
-        // assert_eq!(n3.get(&[2, 1, 4]).unwrap(), 7);
-        // assert_eq!(n3.get(&[1, 2, 2]).unwrap(), 5);
-        // assert_eq!(n3.get(&[0, 3, 3]).unwrap(), 6);
+        assert_eq!(n3.get(&[2, 1, 4]).unwrap(), 7);
+        assert_eq!(n3.get(&[1, 2, 2]).unwrap(), 5);
+        assert_eq!(n3.get(&[0, 3, 3]).unwrap(), 6);
 
         // N4 Mixed Int and Str
         let mut n4 = NDS::new(

@@ -53,6 +53,7 @@ dependencies = [
  "libc",
  "lisparser",
  "m6stack",
+ "mixin",
  "regex",
  "rsc",
  "uuid",
@@ -84,6 +85,7 @@ dependencies = [
 name = "bare-proc-macros"
 version = "0.1.0"
 dependencies = [
+ "inkwell",
  "proc-macro2",
  "quote",
  "syn",
@@ -226,16 +228,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fbe5e23404da5b4f555ef85ebed98fb4083e55a00c317800bc2a50ede9f3d219"
 
 [[package]]
-name = "liblang"
-version = "0.1.0"
-dependencies = [
- "indexmap",
- "m6arr",
- "num-derive",
- "num-traits",
-]
-
-[[package]]
 name = "lisparser"
 version = "0.1.0"
 dependencies = [
@@ -280,6 +272,16 @@ name = "memchr"
 version = "2.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "308cc39be01b73d0d18f82a0e7b2a3df85245f84af96fdddc5d202d27e47b86a"
+
+[[package]]
+name = "mixin"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "m6arr",
+ "num-derive",
+ "num-traits",
+]
 
 [[package]]
 name = "num-derive"

@@ -14,11 +14,13 @@ use inkwell::module::{Linkage, Module};
 use inkwell::targets::{
     CodeModel, InitializationConfig, RelocMode, Target, TargetMachine,
 };
-use inkwell::OptimizationLevel;
-
-
 use inkwell::values::{IntValue, PointerValue};
-use proc_macros::load_vm_common_ty;
+use inkwell::OptimizationLevel;
+use proc_macros::{
+    load_vm_common_ty,
+    impl_fn_hdr
+};
+
 
 #[macro_export]
 macro_rules! module_name {
@@ -57,37 +59,40 @@ impl<'ctx> VMCtxHolder<'ctx> {
 
         /* printf */
         let fn_printf_t = i32ptr_t.fn_type(&[i8ptr_t.into()], true);
-        module.add_function(
-            "printf",
-            fn_printf_t,
-            Some(Linkage::External),
-        );
+        module.add_function("printf", fn_printf_t, Some(Linkage::External));
 
         /* open */
         let fn_open_t = i32_t.fn_type(&[i8ptr_t.into(), i32_t.into()], true);
-        module.add_function(
-            "open",
-            fn_open_t,
-            Some(Linkage::External)
-        );
+        module.add_function("open", fn_open_t, Some(Linkage::External));
 
         /* write */
-        let fn_write_t = i128_t.fn_type(&[i32_t.into(), i8ptr_t.into()], false);
-        module.add_function(
-            "write",
-            fn_write_t,
-            Some(Linkage::External)
-        );
+        let fn_write_t =
+            i128_t.fn_type(&[i32_t.into(), i8ptr_t.into()], false);
+        module.add_function("write", fn_write_t, Some(Linkage::External));
 
         /* close */
         let fn_close_t = i32_t.fn_type(&[i32_t.into()], false);
-        module.add_function(
-            "close",
-            fn_close_t,
-            Some(Linkage::External)
-        );
+        module.add_function("close", fn_close_t, Some(Linkage::External));
 
 
+
+        //////////////////////////////////////////////////////////////////////
+        //// LibMixin Functions
+
+        /*
+         add_fun_hdr_external! { ctx, module |
+             nds_get(*u8, *usize) -> usize;
+        }
+        */
+        impl_fn_hdr![ module |
+            nds_create(u8, *u8, *usize, usize) -> *u8;
+            nds_assoc(*u8, *usize) -> *usize;
+            nds_get(*u8, *usize) -> usize;
+            nds_len(*u8) -> usize;
+            nds_deallocate(*u8) -> void
+        ];
+
+        // println!("!!!!!!!!!: {:#?}", module.get_function("nds_len").unwrap());
 
         module
     }
@@ -105,8 +110,11 @@ impl<'ctx> VMCtxHolder<'ctx> {
         self.ctx.append_basic_block(fn_main, "blk_main")
     }
 
-    pub fn build_local_str(&'ctx self, builder: &Builder<'ctx>, value: &str) -> (PointerValue<'ctx>, IntValue<'ctx>) {
-
+    pub fn build_local_str(
+        &'ctx self,
+        builder: &Builder<'ctx>,
+        value: &str,
+    ) -> (PointerValue<'ctx>, IntValue<'ctx>) {
         let var = self.ctx.const_string(value.as_bytes(), true);
         let var_ptr = builder.build_alloca(var.get_type(), "");
         builder.build_store(var_ptr, var);
@@ -116,10 +124,52 @@ impl<'ctx> VMCtxHolder<'ctx> {
         (var_ptr, len)
     }
 
-    pub fn i32(&'ctx self, value: u64) -> IntValue<'ctx> {
-        self.ctx.i32_type().const_int(value, true)
+    pub fn build_local_u8_array(
+        &'ctx self,
+        builder: &Builder<'ctx>,
+        values: &[IntValue<'ctx>],
+    ) -> (PointerValue<'ctx>, IntValue<'ctx>) {
+        load_vm_common_ty!(self.ctx);
+
+        let ty = i8ptr_t;
+        let len = size_t.const_int(values.len() as u64, false);
+
+        let var_ptr = builder.build_array_alloca(ty, len, "");
+
+        builder.build_store(
+            var_ptr,
+            i8_t.const_array(values)
+        );
+
+        (var_ptr, len)
     }
 
+    pub fn build_local_usize_array(
+        &'ctx self,
+        builder: &Builder<'ctx>,
+        values: &[IntValue<'ctx>],
+    ) -> (PointerValue<'ctx>, IntValue<'ctx>) {
+        load_vm_common_ty!(self.ctx);
+
+        let ty = size_t;
+        let len = size_t.const_int(values.len() as u64, false);
+
+        let var_ptr = builder.build_array_alloca(ty, len, "");
+
+        builder.build_store(
+            var_ptr,
+            size_t.const_array(values)
+        );
+
+        (var_ptr, len)
+    }
+
+    // i8_t
+    pub fn u8(&'ctx self, value: u8) -> IntValue<'ctx> {
+        load_vm_common_ty!(self.ctx);
+
+        i8_t.const_int(value as u64, false)
+    }
 }
 
 

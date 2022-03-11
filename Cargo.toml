@@ -36,6 +36,10 @@ path = "bacommon"
 package = "lisparser"
 path = "lisparser"
 
+[dependencies.mixin]
+package = "mixin"
+path = "lib/mixin"
+
 
 [workspace]
-members = ["proc_macros", "lib/*", "bacore", "bacommon", "lisparser"]
+members = ["proc_macros", "lib/mixin", "bacore", "bacommon", "lisparser"]

@@ -11,6 +11,10 @@ getbac: build copybin
 genlib:
 	@ cargo build -p rsc --release
 	@ cp ./target/release/librsc.so ./runtime/
+	@ cargo build -p mixin --release
+	@ cp ./target/release/libmixin.a ./lib/
+	@ cp ./target/release/libmixin.so ./lib/
+
 
 testexp0: build copybin
 	@ ./${BARE_COMPILER} ./examples/exp0.ba

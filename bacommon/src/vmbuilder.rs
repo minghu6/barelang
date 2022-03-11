@@ -29,3 +29,22 @@ pub fn create_entry_block_alloca<'ctx>(
 
     builder.build_alloca(ty, name)
 }
+
+
+#[macro_export]
+macro_rules! add_func_hdr {
+    ($ans:ident, $base_name:literal [ $($arg:literal),* ] -> $ret:literal | $fn_mode:ident ) => {
+        {
+
+
+
+            let linkage = match stringify!($fn_mode) {
+                "inline" => Some(Linkage::LinkOnceODR),
+                "default" => None,
+                _ => unreachable!(stringify!($fn_mode))
+            };
+
+            $ans.compile_declare(&afn, linkage)
+        }
+    };
+}

@@ -3,13 +3,20 @@
 
 extern crate proc_macro;
 
+use inkwell::context::Context;
+use inkwell::module::Module;
+use inkwell::types::BasicType;
 use proc_macro::TokenStream;
-use proc_macro2::{ Span };
-use syn::parse::{Parse, ParseStream, Result};
-use syn::token::{Paren, Priv};
-use syn::{Expr, Ident, Lit, LitStr, MacroDelimiter, Path, Token, parse_macro_input};
+use proc_macro2::Span;
 use quote::quote;
-
+use syn::parenthesized;
+use syn::parse::{Parse, ParseStream, Result};
+use syn::punctuated::Punctuated;
+use syn::token::{Paren, Priv};
+use syn::{
+    parse_macro_input, Expr, ExprMethodCall, ExprPath, Ident, Lit, LitInt,
+    LitStr, MacroDelimiter, Path, Token,
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 //// VecMacroRules
@@ -17,7 +24,7 @@ use quote::quote;
 struct VecMacroRules {
     name: Ident,
     path: Path,
-    inc_op: Ident
+    inc_op: Ident,
 }
 
 impl Parse for VecMacroRules {
@@ -33,21 +40,14 @@ impl Parse for VecMacroRules {
             inc_op = Ident::new("insert", Span::call_site());
         }
 
-        Ok(Self {
-            name,
-            path,
-            inc_op
-        })
+        Ok(Self { name, path, inc_op })
     }
 }
 
 #[proc_macro]
 pub fn make_vec_macro_rules(input: TokenStream) -> TokenStream {
-    let VecMacroRules {
-        name,
-        path,
-        inc_op
-    } = parse_macro_input!(input as VecMacroRules);
+    let VecMacroRules { name, path, inc_op } =
+        parse_macro_input!(input as VecMacroRules);
 
     TokenStream::from(quote! {
         #[macro_export]
@@ -73,7 +73,7 @@ pub fn make_vec_macro_rules(input: TokenStream) -> TokenStream {
 
 struct MakeCharMatcherRules {
     // ident, patstr, matcher_t
-    rules: Vec<(Ident, LitStr, Ident)>
+    rules: Vec<(Ident, LitStr, Ident)>,
 }
 
 impl Parse for MakeCharMatcherRules {
@@ -100,20 +100,19 @@ impl Parse for MakeCharMatcherRules {
 
 #[proc_macro]
 pub fn make_char_matcher_rules(input: TokenStream) -> TokenStream {
-    let MakeCharMatcherRules {
-        rules
-    } = parse_macro_input!(input as MakeCharMatcherRules);
+    let MakeCharMatcherRules { rules } =
+        parse_macro_input!(input as MakeCharMatcherRules);
 
     let mut token_stream = quote! {};
 
     for (name, patstr, matcher_t) in rules {
         let matcher_fn_name = Ident::new(
             &format!("{}_m", name.to_string().to_lowercase()),
-            Span::call_site()
+            Span::call_site(),
         );
         let matcher_reg_name = Ident::new(
             &format!("{}_REG", name.to_string().to_uppercase()),
-            Span::call_site()
+            Span::call_site(),
         );
 
         if matcher_t.to_string() == "r" {
@@ -127,8 +126,7 @@ pub fn make_char_matcher_rules(input: TokenStream) -> TokenStream {
                     #matcher_reg_name.is_match(c)
                 }
             })
-        }
-        else {
+        } else {
             token_stream.extend(quote! {
                 pub fn #matcher_fn_name(c: &char) -> bool {
                     lazy_static! {
@@ -151,7 +149,7 @@ pub fn make_char_matcher_rules(input: TokenStream) -> TokenStream {
 
 struct MakeTokenMatcherRules {
     // ident, patstr, matcher_t
-    rules: Vec<(Ident, LitStr)>
+    rules: Vec<(Ident, LitStr)>,
 }
 
 impl Parse for MakeTokenMatcherRules {
@@ -177,20 +175,19 @@ impl Parse for MakeTokenMatcherRules {
 /// 只需要头部匹配就可以完成匹配, 因为之前的分词已经做了区分
 #[proc_macro]
 pub fn make_token_matcher_rules(input: TokenStream) -> TokenStream {
-    let MakeTokenMatcherRules {
-        rules
-    } = parse_macro_input!(input as MakeTokenMatcherRules);
+    let MakeTokenMatcherRules { rules } =
+        parse_macro_input!(input as MakeTokenMatcherRules);
 
     let mut token_stream = quote! {};
 
     for (name, patstr) in rules {
         let matcher_fn_name = Ident::new(
             &format!("{}_tok_m", name.to_string().to_lowercase()),
-            Span::call_site()
+            Span::call_site(),
         );
         let matcher_reg_name = Ident::new(
             &format!("{}_TOK_REG", name.to_string().to_uppercase()),
-            Span::call_site()
+            Span::call_site(),
         );
 
         token_stream.extend(quote! {
@@ -212,7 +209,7 @@ pub fn make_token_matcher_rules(input: TokenStream) -> TokenStream {
 ////////////////////////////////////////////////////////////////////////////////
 //// Define New Custom Error
 struct MakeSimpleError {
-    name: Ident
+    name: Ident,
 }
 
 impl Parse for MakeSimpleError {
@@ -225,9 +222,8 @@ impl Parse for MakeSimpleError {
 
 #[proc_macro]
 pub fn make_simple_error_rules(input: TokenStream) -> TokenStream {
-    let MakeSimpleError {
-        name
-    } = parse_macro_input!(input as MakeSimpleError);
+    let MakeSimpleError { name } =
+        parse_macro_input!(input as MakeSimpleError);
 
     TokenStream::from(quote! {
         pub struct #name {
@@ -266,7 +262,7 @@ pub fn make_simple_error_rules(input: TokenStream) -> TokenStream {
 ////////////////////////////////////////////////////////////////////////////////
 //// Load VM Common Type
 struct LoadVMCommonType {
-    ctx: Expr
+    ctx: Expr,
 }
 
 impl Parse for LoadVMCommonType {
@@ -279,9 +275,8 @@ impl Parse for LoadVMCommonType {
 
 #[proc_macro]
 pub fn load_vm_common_ty(input: TokenStream) -> TokenStream {
-    let LoadVMCommonType {
-        ctx
-    } = parse_macro_input!(input as LoadVMCommonType);
+    let LoadVMCommonType { ctx } =
+        parse_macro_input!(input as LoadVMCommonType);
 
     TokenStream::from(quote! {
         use inkwell::AddressSpace;
@@ -292,7 +287,15 @@ pub fn load_vm_common_ty(input: TokenStream) -> TokenStream {
         let i64_t = #ctx.i64_type();
         let i128_t = #ctx.i128_type();
 
-        // Void Type
+        #[cfg(target_pointer_width = "64")]
+        let size_t = #ctx.i64_type();
+
+        #[cfg(target_pointer_width = "32")]
+        let size_t = #ctx.i32_type();
+
+        let sizeptr_t = size_t.ptr_type(AddressSpace::Generic);
+
+        // Ret Void Type
         let void_t = #ctx.void_type();
 
         // Ptr Type
@@ -305,6 +308,162 @@ pub fn load_vm_common_ty(input: TokenStream) -> TokenStream {
         let f64_t = #ctx.f64_type();
 
     })
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+//// Add VM Function Header (External)
+
+
+struct VMPriTy {
+    name: Ident,
+    ptrlv: LitInt,
+}
+
+impl Parse for VMPriTy {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let mut ptrlv = 0;
+        while input.peek(Token![*]) {
+            input.parse::<Token![*]>()?;
+            ptrlv += 1;
+        }
+
+        let name = input.parse::<Ident>()?;
+        let ptrlv = LitInt::new(&ptrlv.to_string(), Span::call_site());
+
+        Ok(Self { name, ptrlv })
+    }
+}
+
+
+struct FunHdr {
+    name: Ident,
+    args: Punctuated<VMPriTy, Token![,]>,
+    ret: VMPriTy,
+}
+
+impl Parse for FunHdr {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let name = input.parse::<Ident>()?;
+
+        let args;
+        parenthesized!(args in input);
+
+        let args = args.parse_terminated(VMPriTy::parse)?;
+
+        input.parse::<Token![->]>()?;
+
+        let ret = input.parse::<VMPriTy>()?;
+
+        Ok(Self { name, args, ret })
+    }
+}
+
+
+struct ImplFunHdr {
+    module: Ident,
+    funhdrs: Punctuated<FunHdr, Token![;]>,
+}
+
+impl Parse for ImplFunHdr {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let module = input.parse::<Ident>()?;
+        input.parse::<Token![|]>()?;
+
+        let funhdrs = input.parse_terminated(FunHdr::parse)?;
+
+        Ok(Self {
+            module,
+            funhdrs,
+        })
+    }
+}
+
+/// Cooperate with load_vm_common_ty
+#[proc_macro]
+pub fn impl_fn_hdr(input: TokenStream) -> TokenStream {
+    let ImplFunHdr {
+        module,
+        funhdrs,
+    } = parse_macro_input!(input as ImplFunHdr);
+
+    let mut ts = quote! {
+    };
+
+    for funhdr in funhdrs {
+        let fname = funhdr.name;
+        let ret = funhdr.ret;
+        let ret_name = ret.name;
+        let ret_ptrlv = ret.ptrlv;
+
+        /* I have to repeate myself for quote! return private struct
+         (its ret type can't exposed to function args or ret).
+         */
+        let ty = ret_name;
+        let ptrlv = ret_ptrlv.base10_parse::<u16>().unwrap();
+
+        let mut ty_ts = match ty.to_string().as_str() {
+            "i8" | "u8" => quote! {
+                i8_t
+            },
+            "usize" => quote! {
+                size_t
+            },
+            "void" => quote! {
+                void_t
+            },
+            _ => panic!("Unsupported vm type name"),
+        };
+        for _ in 0..ptrlv {
+            ty_ts.extend(quote! {
+                .ptr_type(AddressSpace::Generic)
+            })
+        }
+
+        let mut args_ts = quote! {
+        };
+
+        for arg in funhdr.args {
+            let ty = arg.name;
+            let ptrlv = arg.ptrlv.base10_parse::<u16>().unwrap();
+
+            let mut ty_ts = match ty.to_string().as_str() {
+                "i8" | "u8" => quote! {
+                    i8_t
+                },
+                "usize" => quote! {
+                    size_t
+                },
+                "void" => quote! {
+                    void_t
+                },
+                _ => panic!("Unsupported vm type name"),
+            };
+            for _ in 0..ptrlv {
+                ty_ts.extend(quote! {
+                    .ptr_type(AddressSpace::Generic)
+                })
+            }
+            ty_ts.extend(quote! {
+                .into(),
+            });
+
+            args_ts.extend(ty_ts);
+        }
+
+
+        ts.extend(quote! {
+            #module.add_function(
+                stringify!(#fname),
+                #ty_ts
+                    .fn_type(&[#args_ts], false),
+                Some(Linkage::External)
+            );
+        });
+    }
+
+    TokenStream::from(ts)
 }
 
 
@@ -358,6 +517,4 @@ pub fn load_vm_common_ty(input: TokenStream) -> TokenStream {
 
 
 #[cfg(test)]
-mod tests {
-
-}
+mod tests {}

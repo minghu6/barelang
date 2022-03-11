@@ -15,6 +15,19 @@ pub fn bare_home() -> PathBuf {
 }
 
 
+/// staticlib
+#[inline]
+pub fn libmixin_a_path() -> PathBuf {
+    bare_home().join("lib").join("libmixin.a")
+}
+
+/// dylib
+#[inline]
+pub fn libmixin_so_path() -> PathBuf {
+    bare_home().join("lib").join("libmixin.so")
+}
+
+
 /// Full path of librsc.so
 #[inline]
 pub fn librsc_path() -> PathBuf {
