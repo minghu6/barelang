@@ -1,22 +1,13 @@
-#![allow(unused_imports)]
-#![allow(unused_import_braces)]
-
 extern crate proc_macro;
 
-use inkwell::context::Context;
-use inkwell::module::Module;
-use inkwell::types::BasicType;
 use proc_macro::TokenStream;
-use proc_macro2::Span;
+use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::quote;
 use syn::parenthesized;
 use syn::parse::{Parse, ParseStream, Result};
 use syn::punctuated::Punctuated;
-use syn::token::{Paren, Priv};
-use syn::{
-    parse_macro_input, Expr, ExprMethodCall, ExprPath, Ident, Lit, LitInt,
-    LitStr, MacroDelimiter, Path, Token,
-};
+use syn::{parse_macro_input, Expr, Ident, LitStr, Path, Token};
+
 
 ////////////////////////////////////////////////////////////////////////////////
 //// VecMacroRules
@@ -304,6 +295,8 @@ pub fn load_vm_common_ty(input: TokenStream) -> TokenStream {
         let i64ptr_t = i64_t.ptr_type(AddressSpace::Generic);
         let i128ptr_t = i128_t.ptr_type(AddressSpace::Generic);
 
+        let i8ptr2_t = i8ptr_t.ptr_type(AddressSpace::Generic);
+
         // Float Type
         let f64_t = #ctx.f64_type();
 
@@ -316,47 +309,103 @@ pub fn load_vm_common_ty(input: TokenStream) -> TokenStream {
 //// Add VM Function Header (External)
 
 
-struct VMPriTy {
-    name: Ident,
-    ptrlv: LitInt,
+enum VMPriTy {
+    TS(TokenStream2),
+    Ellipsis,
 }
 
 impl Parse for VMPriTy {
     fn parse(input: ParseStream) -> Result<Self> {
-        let mut ptrlv = 0;
+        if input.peek(Token![...]) {
+            input.parse::<Token![...]>()?;
+
+            return Ok(Self::Ellipsis);
+        }
+
+        let mut ptrlv = 0u8;
         while input.peek(Token![*]) {
             input.parse::<Token![*]>()?;
             ptrlv += 1;
         }
 
-        let name = input.parse::<Ident>()?;
-        let ptrlv = LitInt::new(&ptrlv.to_string(), Span::call_site());
+        let ty = input.parse::<Ident>()?;
 
-        Ok(Self { name, ptrlv })
+        let mut ty_ts = match ty.to_string().as_str() {
+            "i8" | "u8" => quote! {
+                i8_t
+            },
+            "usize" => quote! {
+                size_t
+            },
+            "i32" => quote! {
+                i32_t
+            },
+            "i128" => quote! {
+                i128_t
+            },
+            "void" => quote! {
+                void_t
+            },
+            _ => panic!("Unsupported vm type name {}", ty.to_string()),
+        };
+        for _ in 0..ptrlv {
+            ty_ts.extend(quote! {
+                .ptr_type(AddressSpace::Generic)
+            })
+        }
+
+        Ok(Self::TS(ty_ts))
     }
 }
 
 
 struct FunHdr {
     name: Ident,
-    args: Punctuated<VMPriTy, Token![,]>,
-    ret: VMPriTy,
+    args: Vec<TokenStream2>,
+    ret: TokenStream2,
+    is_var: bool,
 }
 
 impl Parse for FunHdr {
     fn parse(input: ParseStream) -> Result<Self> {
         let name = input.parse::<Ident>()?;
 
-        let args;
-        parenthesized!(args in input);
+        let args_buf;
+        parenthesized!(args_buf in input);
 
-        let args = args.parse_terminated(VMPriTy::parse)?;
+        let args_prity
+            = args_buf.parse_terminated::<VMPriTy, Token![,]>(VMPriTy::parse)?;
 
-        input.parse::<Token![->]>()?;
+        let mut args = vec![];
+        let mut is_var = false;
+        for arg in args_prity {
+            match arg {
+                VMPriTy::TS(ts) => args.push(ts),
+                VMPriTy::Ellipsis => {
+                    is_var = true;
+                    break;
+                }
+            }
+        }
 
-        let ret = input.parse::<VMPriTy>()?;
+        let ret;
+        if input.peek(Token![-]) {
+            input.parse::<Token![->]>()?;
+            ret = if let VMPriTy::TS(ts) = input.parse::<VMPriTy>()? {
+                ts
+            } else {
+                unreachable!()
+            };
+        } else {
+            ret = quote! { void_t };
+        }
 
-        Ok(Self { name, args, ret })
+        Ok(Self {
+            name,
+            args,
+            ret,
+            is_var,
+        })
     }
 }
 
@@ -373,91 +422,35 @@ impl Parse for ImplFunHdr {
 
         let funhdrs = input.parse_terminated(FunHdr::parse)?;
 
-        Ok(Self {
-            module,
-            funhdrs,
-        })
+        Ok(Self { module, funhdrs })
     }
 }
 
 /// Cooperate with load_vm_common_ty
 #[proc_macro]
 pub fn impl_fn_hdr(input: TokenStream) -> TokenStream {
-    let ImplFunHdr {
-        module,
-        funhdrs,
-    } = parse_macro_input!(input as ImplFunHdr);
+    let ImplFunHdr { module, funhdrs } =
+        parse_macro_input!(input as ImplFunHdr);
 
-    let mut ts = quote! {
-    };
+    let mut ts = quote! {};
 
     for funhdr in funhdrs {
         let fname = funhdr.name;
-        let ret = funhdr.ret;
-        let ret_name = ret.name;
-        let ret_ptrlv = ret.ptrlv;
+        let ret_ts = funhdr.ret;
 
-        /* I have to repeate myself for quote! return private struct
-         (its ret type can't exposed to function args or ret).
-         */
-        let ty = ret_name;
-        let ptrlv = ret_ptrlv.base10_parse::<u16>().unwrap();
-
-        let mut ty_ts = match ty.to_string().as_str() {
-            "i8" | "u8" => quote! {
-                i8_t
-            },
-            "usize" => quote! {
-                size_t
-            },
-            "void" => quote! {
-                void_t
-            },
-            _ => panic!("Unsupported vm type name"),
-        };
-        for _ in 0..ptrlv {
-            ty_ts.extend(quote! {
-                .ptr_type(AddressSpace::Generic)
-            })
-        }
-
-        let mut args_ts = quote! {
-        };
-
+        let mut args_ts = quote! {};
         for arg in funhdr.args {
-            let ty = arg.name;
-            let ptrlv = arg.ptrlv.base10_parse::<u16>().unwrap();
-
-            let mut ty_ts = match ty.to_string().as_str() {
-                "i8" | "u8" => quote! {
-                    i8_t
-                },
-                "usize" => quote! {
-                    size_t
-                },
-                "void" => quote! {
-                    void_t
-                },
-                _ => panic!("Unsupported vm type name"),
-            };
-            for _ in 0..ptrlv {
-                ty_ts.extend(quote! {
-                    .ptr_type(AddressSpace::Generic)
-                })
-            }
-            ty_ts.extend(quote! {
-                .into(),
+            args_ts.extend(quote! {
+                #arg.into(),
             });
-
-            args_ts.extend(ty_ts);
         }
-
+        let is_var = funhdr.is_var;
 
         ts.extend(quote! {
             #module.add_function(
                 stringify!(#fname),
-                #ty_ts
-                    .fn_type(&[#args_ts], false),
+                #ret_ts
+                    .fn_type(&[#args_ts], #is_var),
                 Some(Linkage::External)
             );
         });

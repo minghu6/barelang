@@ -16,7 +16,7 @@ use lisparser::{data::*, pretty_printer::Dump};
 use crate::core_syntax::type_anno::AddrMode;
 
 use super::{CompileContext, LocalContext, LocalContextType, a_value::AValue, name_mangling::{concat_overload_name, rename_fn_alias, NameConcatStyle}, type_anno::ConcreteTypeAnno};
-use bacommon::{error::*, vmbuilder::builder_position_at_before};
+use bacommon::{error::*, vmbuilder::builder_position_at_start};
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Fn `Form`

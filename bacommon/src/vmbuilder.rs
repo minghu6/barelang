@@ -3,8 +3,8 @@ use inkwell::{
     types::BasicTypeEnum, values::PointerValue,
 };
 
-pub fn builder_position_at_before<'ctx>(
-    builder: &mut Builder<'ctx>,
+pub fn builder_position_at_start<'ctx>(
+    builder: &Builder<'ctx>,
     entry: BasicBlock<'ctx>,
 ) {
     match entry.get_first_instruction() {

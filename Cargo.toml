@@ -42,4 +42,11 @@ path = "lib/mixin"
 
 
 [workspace]
-members = ["proc_macros", "lib/mixin", "bacore", "bacommon", "lisparser"]
+members = [
+    "proc_macros",
+    "proc_macros2",
+    "lib/mixin",
+    "bacore",
+    "bacommon",
+    "lisparser"
+]

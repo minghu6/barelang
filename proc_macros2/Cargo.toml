@@ -1,15 +1,13 @@
 [package]
-name = "bare-proc-macros"
+name = "proc_macros2"
 version = "0.1.0"
-edition = "2018"
-
+edition = "2021"
+description = "proc_macros of proc_macros (proc_macros(2))"
 
 [dependencies]
 proc-macro2 = "^1.0"
 quote = "^1.0"
 syn = "^1.0"
-uuid = { version = "0.8", features = ["v4"] }
-
 
 [lib]
 proc-macro = true

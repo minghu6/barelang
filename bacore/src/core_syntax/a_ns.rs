@@ -9,7 +9,7 @@ use std::{
 use bacommon::{
     config::{CompilerConfig, PrintTy},
     target_generator::TargetGenerator,
-    vmbuilder::builder_position_at_before,
+    vmbuilder::builder_position_at_start,
 };
 use inkwell::{
     builder::Builder,

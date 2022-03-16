@@ -17,7 +17,7 @@ use inkwell::targets::{
     CodeModel, InitializationConfig, RelocMode, Target, TargetMachine,
 };
 use inkwell::types::{AnyTypeEnum, BasicTypeEnum};
-use inkwell::values::{AnyValue, BasicValue, BasicValueEnum};
+use inkwell::values::{AnyValue, BasicValue, BasicValueEnum, InstructionOpcode};
 use inkwell::AddressSpace;
 use inkwell::OptimizationLevel;
 use itertools::Itertools;
@@ -119,15 +119,17 @@ fn rsclib_codegen() -> Result<(), Box<dyn Error>> {
 
     let s0_len =
         i64_type.const_int((s0.len() as usize).try_into().unwrap(), false);
-    let s0_ptr = builder.build_array_alloca(i8ptr_t, s0_len, "xxx");
+    let s0_ptr = builder.build_array_alloca(i8_t, s0_len, "xxx");
     let s0_ptr_v = i8_t.const_array(&s0_i_vec[..]);
+    let new_ptr = builder.build_cast(
+        InstructionOpcode::BitCast, s0_ptr_v, i8ptr_t, "LALA!!");
 
     // codegen store
-    builder.build_store(s0_ptr, s0_ptr_v);
+    builder.build_store(s0_ptr, new_ptr);
 
     let ret_callsite = builder.build_call(
         fn_prints,
-        &[BasicValueEnum::PointerValue(s0_ptr).into()],
+        &[s0_ptr.into()],
         "prints",
     );
 
@@ -185,6 +187,7 @@ fn rsclib_codegen() -> Result<(), Box<dyn Error>> {
     builder.build_call(fn_printi32_t, &[new_int.into()], "printi32");
 
     builder.build_return(Some(&i64_type.const_zero()));
+    fn_main.verify(true);
 
     ///////////////////////////////////////////////////////////////////////////
     //// Target Generation

@@ -6,7 +6,7 @@ use std::{collections::VecDeque, rc::Rc};
 
 use bacommon::config::usize_len;
 use bacommon::etc_utils::{gen_counter, CounterType};
-use bacommon::vmbuilder::builder_position_at_before;
+use bacommon::vmbuilder::builder_position_at_start;
 use convert_case::{Case, Casing};
 use indexmap::{IndexMap, IndexSet};
 use inkwell::basic_block::BasicBlock;
@@ -221,7 +221,7 @@ impl<'ctx> LocalContext<'ctx> {
 
         match self.0.as_ref().borrow().lctx_type {
             LocalContextType::FnBody(fnbody) => {
-                builder_position_at_before(&mut builder, fnbody)
+                builder_position_at_start(&mut builder, fnbody)
             }
             LocalContextType::LoopBody(loopbody) => {
                 builder.position_at_end(loopbody)
