@@ -1,0 +1,13 @@
+From New to Old
+
+
+
+[strict bin bash]
+
+[mixin]
+
+[mid lang] Lisp + Consistent Data Structure
+
+[simple lang]
+没有特别的想法, 想做一个简洁(写起来省事儿), 自恰(函数式, 修补Haskell一些缺乏群继承关系的历史包袱), 不惜牺牲一定的泛用性
+函数可以通过`.`来链接, 大部分意义上是一个简化的没有历史包袱的Haskell.

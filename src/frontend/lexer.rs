@@ -265,6 +265,9 @@ pub fn trim_tokens(tokens: Vec<Token>) -> Vec<Token> {
 #[cfg(test)]
 mod test {
 
+    extern crate test;
+    use test::Bencher;
+
     #[test]
     fn test_lexer() {
         use itertools::Itertools;
@@ -287,5 +290,29 @@ mod test {
         }).collect_vec();
 
         println!("{:#?}", trimed_tokens);
+    }
+
+    #[bench]
+    fn bench_lexer(b: &mut Bencher) {
+
+        use std::path::PathBuf;
+        use crate::frontend::lexer::{
+            tokenize, SrcFileInfo
+        };
+
+        let srcfile
+        = SrcFileInfo::new(PathBuf::from("./examples/exp2.ba")).unwrap();
+
+        b.iter(|| {
+            let tokens = tokenize(&srcfile);
+        });
+
+        // let trimed_tokens
+        // = tokens.into_iter().filter(|tok| {
+        //     let token_name = tok.name();
+
+        //     !(token_name == "<sp>" || token_name.ends_with("<comment>"))
+        // }).collect_vec();
+
     }
 }

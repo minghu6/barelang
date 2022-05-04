@@ -559,11 +559,25 @@ mod test {
         assert!(!matcher.is_match("ade"));
 
         // test intlit
-        matcher = Regex::new(r"^[+|-]?(([0-9]+)|(0x[0-9a-f]+))$").unwrap();
-        assert!(matcher.is_match("1234"));
-        assert!(matcher.is_match("-1234"));
-        assert!(matcher.is_match("-0x1af4"));
-        assert!(!matcher.is_match("1af4"));
+        matcher = Regex::new(r"^[+|-]?(([0-9]+)|(0x[0-9a-f]+))").unwrap();
+        // assert!(matcher.is_match("1234"));
+        // assert!(matcher.is_match("-1234"));
+        // assert!(matcher.is_match("-0x1af4"));
+        // assert!(!matcher.is_match("1af4"));
+
+        // test sp
+        matcher = Regex::new("^([[:space:]--[\n\r]]+)").unwrap();
+        // let gr = matcher.captures("    ").unwrap();
+        // let grs = gr.get(1).unwrap().as_str();
+        // println!("{}: {}", grs, grs.chars().count());
+
+        let gr = matcher.captures_read(
+          &mut matcher.capture_locations(),
+          " \n")
+          .unwrap();
+        let grs = gr.as_str();
+        println!("{}: {}", grs, grs.chars().count());
+
 
         // test paren
         matcher = Regex::new(r"[()\[\]{}]").unwrap();
@@ -584,6 +598,16 @@ mod test {
 
 这是真的好
         \""));
+
+
+        matcher = Regex::new(r#"^(!\([\s\S]*\))"#).unwrap();
+
+        let gr = matcher.captures_read(
+          &mut matcher.capture_locations(),
+          "!(echo -n Count :)   }")
+          .unwrap();
+        let grs = gr.as_str();
+        println!("{}: {}", grs, grs.chars().count());
 
     }
 }

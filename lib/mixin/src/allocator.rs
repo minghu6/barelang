@@ -1,12 +1,10 @@
-
-
 // use std::os::raw::{
 //     c_void, c_int
 // };
-use std::alloc::{
+use core::alloc::{
     alloc_zeroed, Layout
 };
-use std::ptr::{
+use core::ptr::{
     drop_in_place, slice_from_raw_parts_mut
 };
 

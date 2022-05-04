@@ -1,6 +1,4 @@
-#![allow(unused)]
-
-use std::ffi::CString;
+use core::ffi::CString;
 
 
 pub(crate) fn cstr_p(s: &str) -> *mut i8 {

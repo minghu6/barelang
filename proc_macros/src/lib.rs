@@ -334,10 +334,10 @@ impl Parse for VMPriTy {
             "i8" | "u8" => quote! {
                 i8_t
             },
-            "usize" => quote! {
+            "usize" | "isize" => quote! {
                 size_t
             },
-            "i32" => quote! {
+            "i32" | "u32" => quote! {
                 i32_t
             },
             "i128" => quote! {
@@ -432,7 +432,11 @@ pub fn impl_fn_hdr(input: TokenStream) -> TokenStream {
     let ImplFunHdr { module, funhdrs } =
         parse_macro_input!(input as ImplFunHdr);
 
-    let mut ts = quote! {};
+    let mut ts = quote! {
+        use proc_macros::load_vm_common_ty;
+
+        load_vm_common_ty!(self.ctx);
+    };
 
     for funhdr in funhdrs {
         let fname = funhdr.name;

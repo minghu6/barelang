@@ -8,6 +8,7 @@ pub mod rules;
 /* parser */
 pub mod lexer;
 pub mod manual_parser;
+// pub mod lexer2;
 
 /* data */
 pub mod datalsp;

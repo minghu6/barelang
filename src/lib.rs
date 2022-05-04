@@ -4,6 +4,7 @@
 #![feature(option_get_or_insert_default)]
 #![feature(path_file_prefix)]
 #![feature(box_syntax)]
+#![feature(test)]
 
 #![allow(mixed_script_confusables)]
 #![allow(incomplete_features)]
@@ -22,7 +23,6 @@ use bacommon::config::VerboseLv;
 pub use proc_macros::{
     make_vec_macro_rules,
     make_char_matcher_rules,
-    make_token_matcher_rules,
     make_simple_error_rules,
     //ht
 };

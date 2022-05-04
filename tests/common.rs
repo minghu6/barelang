@@ -24,6 +24,7 @@ use inkwell::values::{
 };
 use inkwell::{IntPredicate, OptimizationLevel};
 use lazy_static::lazy_static;
+use either::Either;
 
 use proc_macros::{impl_fn_hdr, load_vm_common_ty};
 
@@ -39,6 +40,7 @@ macro_rules! module_name {
 
 lazy_static! {
     pub static ref GET_GLOBAL_ID: Mutex<CounterType> = Mutex::new(gen_counter());
+    // pub static ref VM_CTX_HOLDER: Mutex<VMCtxHolder<'static>> = Mutex::new(VMCtxHolder::new());
 }
 
 macro_rules! id {
@@ -46,6 +48,12 @@ macro_rules! id {
         GET_GLOBAL_ID.lock().unwrap()()
     };
 }
+
+// macro_rules! holder {
+//     () => {
+//         VM_CTX_HOLDER.lock().unwrap()
+//     };
+// }
 
 
 pub struct VMCtxHolder<'ctx> {
@@ -64,27 +72,44 @@ impl<'ctx> VMCtxHolder<'ctx> {
         }
     }
 
-    pub fn init_module(&'ctx self, modname: &str) -> Module<'ctx> {
-        let module = self.ctx.create_module(modname);
+    //////////////////////////////////////////////////////////////////////
+    //// Include Header (POSIX + CORE)
+    //////////////////////////////////////////////////////////////////////
 
-        load_vm_common_ty!(self.ctx);
+    ///////////////////////////////////
+    //// POSIX
 
-        //////////////////////////////////////////////////////////////////////
-        //// POSIX Functions
+    pub fn include_fcntl(&'ctx self, module: &Module<'ctx>) {
+        impl_fn_hdr![ module |
+            open(*i8, i32, ...) -> i32;
+        ];
+    }
 
+    pub fn include_stdio(&'ctx self, module: &Module<'ctx>) {
         impl_fn_hdr![ module |
             printf(*i8, ...) -> i32;
+        ];
+    }
 
-            open(*i8, i32, ...) -> i32;
-            close(i32) -> i32;
-            write(i32, *i8, usize) -> i128;
-
+    pub fn include_string(&'ctx self, module: &Module<'ctx>) {
+        impl_fn_hdr![ module |
             strlen(*i8) -> usize;
         ];
+    }
 
-        //////////////////////////////////////////////////////////////////////
-        //// LibMixin Functions
+    pub fn include_unistd(&'ctx self, module: &Module<'ctx>) {
+        impl_fn_hdr![ module |
+            write(i32, *i8, usize) -> i128;
+            close(i32) -> i32;
+            sleep(u32) -> u32;
+        ];
+    }
 
+
+    ///////////////////////////////////
+    //// Core
+
+    pub fn include_mixin(&'ctx self, module: &Module<'ctx>) {
         impl_fn_hdr![ module |
             nds_create(u8, *u8, *usize, usize) -> *u8;
             nds_assoc(*u8, *usize) -> *usize;
@@ -92,6 +117,13 @@ impl<'ctx> VMCtxHolder<'ctx> {
             nds_len(*u8) -> usize;
             nds_deallocate(*u8)
         ];
+    }
+
+
+    pub fn init_module(&'ctx self, modname: &str) -> Module<'ctx> {
+        let module = self.ctx.create_module(modname);
+
+        // self.include_stdio(&module);
 
         module
     }
@@ -134,6 +166,60 @@ impl<'ctx> VMCtxHolder<'ctx> {
 
     //////////////////////////////////////////////////////////////////////
     //// Convenient Build
+    //////////////////////////////////////////////////////////////////////
+
+    pub fn bload_int(
+        &'ctx self,
+        builder: &Builder<'ctx>,
+        var: PointerValue<'ctx>,
+    ) -> IntValue<'ctx> {
+        builder.build_load(var, "").into_int_value()
+    }
+
+    pub fn bcnt_init(
+        &'ctx self,
+        builder: &Builder<'ctx>,
+        init: IntValue<'ctx>,
+    ) -> PointerValue<'ctx> {
+        load_vm_common_ty!(self.ctx);
+
+        let var = builder.build_alloca(i32_t, "");
+        builder.build_store(var, init);
+
+        var
+    }
+
+    pub fn bcnt_forward(
+        &'ctx self,
+        builder: &Builder<'ctx>,
+        var: PointerValue<'ctx>,
+        step: IntValue<'ctx>
+    )
+    {
+        let val = self.bload_int(builder, var);
+        let nxt = builder.build_int_add(val, step, "");
+        builder.build_store(var, nxt);
+    }
+
+    /// (low, high)
+    pub fn bcnt_check(
+        &'ctx self,
+        builder: &Builder<'ctx>,
+        var: PointerValue<'ctx>,
+        test: Either<IntValue<'ctx>, IntValue<'ctx>>
+    ) -> IntValue<'ctx>
+    {
+        let val = self.bload_int(builder, var);
+
+        match test {
+            Either::Left(low) => {
+                self.bsgt(builder, val, low)
+            },
+            Either::Right(high) => {
+                self.bsgt(builder, high, val)
+            },
+        }
+    }
 
     pub fn build_local_str(
         &'ctx self,
@@ -248,25 +334,10 @@ impl<'ctx> VMCtxHolder<'ctx> {
         builder.build_call(fn_printf, &args[..], "");
     }
 
-    // pub fn build_cast_ptr_to_int(
-    //     &'ctx self,
-    //     builder: &Builder<'ctx>,
-    //     value: PointerValue<'ctx>
-    // ) -> IntValue<'ctx> {
-    //     load_vm_common_ty!(self.ctx);
-
-    //     builder.build_cast(
-    //         InstructionOpcode::PtrToInt,
-    //         value,
-    //         size_t,
-    //         ""
-    //     )
-    //     .into_int_value()
-    // }
-
 
     //////////////////////////////////////////////////////////////////////
     //// Convenient Const
+    //////////////////////////////////////////////////////////////////////
 
     // i8_t
     pub fn u8(&'ctx self, value: u8) -> IntValue<'ctx> {
@@ -291,6 +362,7 @@ impl<'ctx> VMCtxHolder<'ctx> {
 
     //////////////////////////////////////////////////////////////////////
     //// Convenient Cmp
+    //////////////////////////////////////////////////////////////////////
 
     pub fn bsgt(
         &'ctx self,
@@ -313,6 +385,7 @@ impl<'ctx> VMCtxHolder<'ctx> {
 
     //////////////////////////////////////////////////////////////////////
     //// Control Flow
+    //////////////////////////////////////////////////////////////////////
 
     pub fn bif(
         &'ctx self,
@@ -342,10 +415,83 @@ impl<'ctx> VMCtxHolder<'ctx> {
         (then_builder, finally_builder)
     }
 
-    pub fn bif_else(&'ctx self) {}
+    /// (then-builder, else-builder, finally-builder)
+    pub fn bif_else(
+        &'ctx self,
+        builder: &Builder<'ctx>,
+        cond: IntValue<'ctx>,
+        fnv: FunctionValue<'ctx>,
+    ) -> (Builder<'ctx>, Builder<'ctx>, Builder<'ctx>)
+    {
+        let uid = id!();
+        let then_blk = self.ctx.append_basic_block(
+            fnv,
+            &format!("blk_then_{}", uid)
+        );
+        let else_blk = self.ctx.append_basic_block(
+            fnv,
+            &format!("blk_else_{}", uid)
+        );
+        let finally_blk = self.ctx.append_basic_block(
+            fnv,
+            &format!("blk_finally_{}", uid)
+        );
 
-    // if if ... else
-    pub fn bif_elif_else(&'ctx self) {}
+        builder.build_conditional_branch(cond, then_blk, else_blk);
+
+        let then_builder = self.get_builder_at_end(then_blk);
+        let else_builder = self.get_builder_at_end(else_blk);
+
+        let finally_builder = self.get_builder_at_start(finally_blk);
+
+        then_builder.build_unconditional_branch(finally_blk);
+        builder_position_at_start(&then_builder, then_blk);
+
+        else_builder.build_unconditional_branch(finally_blk);
+        builder_position_at_start(&else_builder, else_blk);
+
+        (then_builder, else_builder, finally_builder)
+    }
+
+    /// if elif, elif, ... else
+    pub fn bif_elif_else(
+        &'ctx self,
+        conds: &[IntValue<'ctx>],
+        fnv: FunctionValue<'ctx>,
+    ) -> (Vec<Builder<'ctx>>, Builder<'ctx>)
+    {
+        todo!()
+    }
+
+
+    /// loop (without if break)
+    /// -> Loop Builder
+    pub fn bloop(
+        &'ctx self,
+        builder: &Builder<'ctx>,
+        fnv: FunctionValue<'ctx>,
+    ) -> (Builder<'ctx>, Builder<'ctx>)
+    {
+        let uid = id!();
+        let loop_blk = self.ctx.append_basic_block(
+            fnv,
+            &format!("blk_loop_{}", uid)
+        );
+        let finally_blk = self.ctx.append_basic_block(
+            fnv,
+            &format!("blk_finally_{}", uid)
+        );
+
+        let loop_builder = self.get_builder_at_end(loop_blk);
+        let finally_builder = self.get_builder_at_start(finally_blk);
+
+        builder.build_unconditional_branch(loop_blk);
+        loop_builder.build_unconditional_branch(loop_blk);
+        builder_position_at_start(&loop_builder, loop_blk);
+
+        (loop_builder, finally_builder)
+    }
+
 }
 
 

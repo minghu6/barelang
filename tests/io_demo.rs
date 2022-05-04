@@ -7,6 +7,7 @@ use std::error::Error;
 
 use bacommon::linker::link2_default;
 use bacommon::runner::run_bin;
+use either::Either;
 use inkwell::OptimizationLevel;
 use libc;
 
@@ -18,11 +19,19 @@ use proc_macros::load_vm_common_ty;
 use crate::common::print_obj;
 use crate::common::VMCtxHolder;
 
+
+
 #[test]
 fn test_io() -> Result<(), Box<dyn Error>> {
     let holder = VMCtxHolder::new();
 
     let module = holder.init_module(&module_name!());
+
+    holder.include_stdio(&module);
+    holder.include_unistd(&module);
+    holder.include_fcntl(&module);
+    holder.include_mixin(&module);
+
     let builder = holder.get_builder();
     load_vm_common_ty!(holder.ctx);
 
@@ -66,12 +75,16 @@ fn test_io() -> Result<(), Box<dyn Error>> {
 
     let fn_main = module.get_function("main").unwrap();
 
+    // TEST IF ELSE
     // compare int res > 5
     let write_ok_cast =
         builder.build_int_truncate(write_ok.into_int_value(), i32_t, "");
     let if_cond =
-        holder.bsgt(&builder, write_ok_cast, holder.i32(13));
-    let (then_builder, builder) = holder.bif(&builder, if_cond, fn_main);
+        holder.bsgt(&builder, write_ok_cast, holder.i32(123));
+    // let (then_builder, builder) = holder.bif(&builder, if_cond, fn_main);
+
+    let (then_builder, else_builder, builder) =
+        holder.bif_else(&builder, if_cond, fn_main);
 
     holder.build_call_printf(
         &then_builder,
@@ -79,7 +92,50 @@ fn test_io() -> Result<(), Box<dyn Error>> {
         " Enter Then: write res: %d\n",
         &[write_ok.into()],
     );
+    holder.build_call_printf(
+        &else_builder,
+        &module,
+        " Enter Else: write res: %d\n",
+        &[write_ok.into()],
+    );
 
+
+    // TEST LOOP
+    // let counter = holder.build_alloca_counter(
+    //     &builder,
+    //     holder.i32(0)
+    // );
+    let cnt_p = holder.bcnt_init(
+        &builder,
+        holder.i32(0),
+    );
+
+    let (loop_builder, builder) = holder.bloop(&builder, fn_main);
+    // let loop_nxt_blk = builder.get_insert_block().unwrap();
+    // let loop_blk = loop_builder.get_insert_block().unwrap();
+
+    // let loop_cont_cond = holder.bcnt_check(&loop_builder, cnt_p, holder.i32(-5));
+
+    // let (if_builder, if_nxt_b) = holder.bif(&loop_builder, loop_cont_cond, fn_main);
+    // let if_nxt_blk = if_nxt_b.get_insert_block().unwrap();
+
+    // if_builder.build_conditional_branch(
+    //     loop_cont_cond,
+    //     if_nxt_blk,
+    //     loop_nxt_blk
+    // );
+
+    // let loop_builder = if_nxt_b;
+    let fn_sleep = module.get_function("sleep").unwrap();
+    loop_builder.build_call(fn_sleep, &[holder.i32(1).into()], "");
+    let cnt = holder.bload_int(&loop_builder, cnt_p);
+    holder.build_call_printf(
+        &loop_builder,
+        &module,
+        "loop %d...\n",
+        &[cnt.into()],
+    );
+    holder.bcnt_forward(&loop_builder, cnt_p, holder.i32(-1));
 
     // test nds
     let base_ty = i8_t.const_int(PriTy::Str.as_value() as u64, false);
@@ -194,7 +250,7 @@ fn test_io() -> Result<(), Box<dyn Error>> {
     builder.build_return(Some(&i64_t.const_zero()));
     fn_main.verify(true);
 
-    print_obj(&module, OptimizationLevel::Default)?;
+    print_obj(&module, OptimizationLevel::None)?;
     println!("->: {}", module_name!());
     let output = module_name!() + ".out";
     link2_default(&output)?;

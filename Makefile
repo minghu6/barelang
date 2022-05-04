@@ -17,23 +17,19 @@ genlib:
 
 
 testexp0: build copybin
-	@ ./${BARE_COMPILER} ./examples/exp0.ba
+	@ ./${BARE_COMPILER} compile ./examples/exp0.ba
 	@ ./a.out
 
 testexp1: build copybin
-	@ ./${BARE_COMPILER} ./examples/exp1.ba
+	@ ./${BARE_COMPILER} compile ./examples/exp1.ba
 	@ ./a.out
 
 testexp2: build copybin
-	@ ./${BARE_COMPILER} ./examples/exp2.ba
+	@ ./${BARE_COMPILER} compile ./examples/exp2.ba
 	@ ./a.out
 
-testforeignapi:
-	cargo test -- --nocapture test_rsclib
-
-testiodemo:
+testllvm_iodemo:
 	cargo test -- --nocapture test_io
-
 
 testllvm_iterarray:
 	cargo test -- --nocapture test_llvm_iterarray
